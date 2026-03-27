@@ -39,19 +39,19 @@ async def fetch_all(since_hours: int = 48) -> list[RawItem]:
     from research.sources.arxiv import fetch_arxiv
     from research.sources.openreview import fetch_openreview
     from research.sources.semantic_scholar import fetch_semantic_scholar
-    from research.sources.codesota import fetch_codesota
     from research.sources.github_prs import fetch_github_prs
     from research.sources.feeds import fetch_feeds
     from research.sources.tavily_scheduled import fetch_tavily_scheduled
+    from research.sources.github_code_search import fetch_github_code_search
 
     results = await asyncio.gather(
         fetch_arxiv(since_hours),
         fetch_openreview(since_hours),
         fetch_semantic_scholar(since_hours),
-        fetch_codesota(since_hours),
         fetch_github_prs(since_hours),
         fetch_feeds(since_hours),
         fetch_tavily_scheduled(),
+        fetch_github_code_search(),
         return_exceptions=True,
     )
 

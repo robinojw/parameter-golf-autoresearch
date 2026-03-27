@@ -8,15 +8,13 @@ import httpx
 from research.fetch import RawItem
 
 FEEDS = [
-    ("https://developer.nvidia.com/blog/feed/", "infra"),
-    ("https://mlsys.org/Conferences/2026/rss.xml", "infra"),
     ("https://lilianweng.github.io/index.xml", "ml"),
     ("https://magazine.sebastianraschka.com/feed", "ml"),
 ]
 
 
 async def fetch_feeds(since_hours: int = 48) -> list[RawItem]:
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
     items: list[RawItem] = []
     seen_ids: set[str] = set()
 

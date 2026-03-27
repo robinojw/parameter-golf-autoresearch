@@ -53,7 +53,7 @@ SCHEDULED_QUERIES = [
         "dimension": "ml",
     },
     {
-        "query": "neural network quantization information theory rate distortion 2026",
+        "query": "neural network quantization information theory rate distortion",
         "search_depth": "basic",
         "time_range": "month",
         "max_results": 5,
@@ -61,14 +61,14 @@ SCHEDULED_QUERIES = [
         "include_domains": ["arxiv.org", "jmlr.org", "proceedings.mlr.press"],
     },
     {
-        "query": "Muon optimizer second order convergence analysis 2026",
+        "query": "Muon optimizer second order convergence analysis",
         "search_depth": "basic",
         "time_range": "month",
         "max_results": 5,
         "dimension": "math",
     },
     {
-        "query": "CUDA triton kernel int4 int6 quantization matmul 2026",
+        "query": "CUDA triton kernel int4 int6 quantization matmul",
         "search_depth": "advanced",
         "time_range": "month",
         "max_results": 6,
@@ -81,7 +81,7 @@ SCHEDULED_QUERIES = [
         ],
     },
     {
-        "query": "zstd brotli model weight compression benchmark 2026",
+        "query": "zstd brotli model weight compression benchmark",
         "search_depth": "basic",
         "time_range": "month",
         "max_results": 5,

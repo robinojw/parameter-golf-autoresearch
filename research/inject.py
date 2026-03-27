@@ -2,6 +2,13 @@ import json
 import re
 from pathlib import Path
 
+from research.experiments import (
+    get_competitor_scores,
+    get_current_best_bpb,
+    get_experiment_history_bullets,
+    get_tier_correlation,
+)
+
 
 def inject_into_program_md(
     graded_cache_path: str = "graded_cache.jsonl",
@@ -49,6 +56,91 @@ def inject_into_program_md(
         flags=re.DOTALL,
     )
 
+    program_path.write_text(new_content)
+
+    inject_experiments_section(program_md_path)
+    inject_competitors_section(program_md_path)
+    inject_dynamic_baseline(program_md_path)
+
+
+def inject_experiments_section(program_md_path: str = "program.md") -> None:
+    program_path = Path(program_md_path)
+    if not program_path.exists():
+        return
+
+    bullets = get_experiment_history_bullets(limit=8)
+    if not bullets:
+        section_body = "[No experiments recorded yet]"
+    else:
+        section_body = bullets
+        correlation = get_tier_correlation()
+        if correlation["correlation_reliable"]:
+            avg_delta = correlation["avg_delta"]
+            pairs = correlation["pairs"]
+            section_body += (
+                f"\n\n_Tier 1↔2 avg delta: {avg_delta:+.4f} bpb ({pairs} paired runs)_"
+            )
+
+    replacement = (
+        f"<!-- EXPERIMENTS_START -->\n{section_body}\n<!-- EXPERIMENTS_END -->"
+    )
+
+    content = program_path.read_text()
+    new_content = re.sub(
+        r"<!-- EXPERIMENTS_START -->.*?<!-- EXPERIMENTS_END -->",
+        replacement,
+        content,
+        flags=re.DOTALL,
+    )
+    program_path.write_text(new_content)
+
+
+def inject_competitors_section(program_md_path: str = "program.md") -> None:
+    program_path = Path(program_md_path)
+    if not program_path.exists():
+        return
+
+    competitors = get_competitor_scores()
+    if not competitors:
+        section_body = "[No competitor data yet — check openai/parameter-golf PRs]"
+    else:
+        top = competitors[:15]
+        lines = ["| PR # | Author | Technique | val_bpb | Δ baseline |"]
+        lines.append("|------|--------|-----------|---------|------------|")
+        for c in top:
+            delta = c["delta_from_baseline"]
+            lines.append(
+                f"| #{c['pr_number']} | {c['author']} | {c['technique']} "
+                f"| {c['val_bpb']:.4f} | {delta:+.4f} |"
+            )
+        section_body = "\n".join(lines)
+
+    replacement = (
+        f"<!-- COMPETITORS_START -->\n{section_body}\n<!-- COMPETITORS_END -->"
+    )
+
+    content = program_path.read_text()
+    new_content = re.sub(
+        r"<!-- COMPETITORS_START -->.*?<!-- COMPETITORS_END -->",
+        replacement,
+        content,
+        flags=re.DOTALL,
+    )
+    program_path.write_text(new_content)
+
+
+def inject_dynamic_baseline(program_md_path: str = "program.md") -> None:
+    program_path = Path(program_md_path)
+    if not program_path.exists():
+        return
+
+    current_best = get_current_best_bpb()
+    content = program_path.read_text()
+    new_content = re.sub(
+        r"\*\*SOTA: [\d.]+ bpb\. Baseline: 1\.2244 bpb\.\*\*",
+        f"**SOTA: {current_best} bpb. Baseline: 1.2244 bpb.**",
+        content,
+    )
     program_path.write_text(new_content)
 
 

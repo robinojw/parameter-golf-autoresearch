@@ -73,6 +73,16 @@ From the challenge wishlist — high value, not yet implemented:
 [Auto-injected by inject.py — do not manually edit this section]
 <!-- RESEARCH_END -->
 
+## Experiment History
+<!-- EXPERIMENTS_START -->
+[Auto-injected by inject.py — do not manually edit this section]
+<!-- EXPERIMENTS_END -->
+
+## Competitor Scores
+<!-- COMPETITORS_START -->
+[Auto-injected by inject.py — do not manually edit this section]
+<!-- COMPETITORS_END -->
+
 ## On-Demand Research
 When you need to look something up mid-experiment, use:
 ```bash
