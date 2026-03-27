@@ -8,6 +8,7 @@ from research.experiments import (
     get_experiment_history_bullets,
     get_tier_correlation,
 )
+from research.verify import get_verified_items
 
 
 def inject_into_program_md(
@@ -60,6 +61,7 @@ def inject_into_program_md(
 
     inject_experiments_section(program_md_path)
     inject_competitors_section(program_md_path)
+    inject_verified_section(program_md_path)
     inject_dynamic_baseline(program_md_path)
 
 
@@ -122,6 +124,43 @@ def inject_competitors_section(program_md_path: str = "program.md") -> None:
     content = program_path.read_text()
     new_content = re.sub(
         r"<!-- COMPETITORS_START -->.*?<!-- COMPETITORS_END -->",
+        replacement,
+        content,
+        flags=re.DOTALL,
+    )
+    program_path.write_text(new_content)
+
+
+def inject_verified_section(program_md_path: str = "program.md") -> None:
+    program_path = Path(program_md_path)
+    if not program_path.exists():
+        return
+
+    verified = get_verified_items()
+    if not verified:
+        section_body = (
+            "[No verified items yet — Tier A items will be deep-verified automatically]"
+        )
+    else:
+        top = verified[:5]
+        lines: list[str] = []
+        for v in top:
+            score_change = (
+                f"{v.get('original_score', 0)}/15 → {v.get('verified_score', 0)}/15"
+            )
+            brief = v.get("implementation_brief", "")
+            sources_count = len(v.get("verification_sources", []))
+            lines.append(
+                f"- **{v.get('id', '?')}** ({score_change}, {sources_count} sources verified)\n"
+                f"  {brief}"
+            )
+        section_body = "\n".join(lines)
+
+    replacement = f"<!-- VERIFIED_START -->\n{section_body}\n<!-- VERIFIED_END -->"
+
+    content = program_path.read_text()
+    new_content = re.sub(
+        r"<!-- VERIFIED_START -->.*?<!-- VERIFIED_END -->",
         replacement,
         content,
         flags=re.DOTALL,

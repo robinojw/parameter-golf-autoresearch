@@ -36,14 +36,20 @@ async def refresh_research(since_hours: int, top_n: int) -> None:
     from research.fetch import fetch_all
     from research.grade import grade_items, _load_graded_ids
     from research.inject import inject_into_program_md
+    from research.verify import run_verification_cycle
 
     new_items = await fetch_all(since_hours=since_hours)
     already_graded = _load_graded_ids()
     ungraded = [i for i in new_items if i.id not in already_graded]
     if ungraded:
         grade_items(ungraded)
+    verified = await run_verification_cycle()
+    verified_count = len(verified)
     inject_into_program_md(top_n=top_n)
-    print(f"[research] {len(ungraded)} new items graded. program.md updated.")
+    print(
+        f"[research] {len(ungraded)} new items graded, "
+        f"{verified_count} verified. program.md updated."
+    )
 
 
 def _check_low_budget(remaining: float, min_reserve: float) -> bool:

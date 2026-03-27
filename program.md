@@ -83,6 +83,11 @@ From the challenge wishlist — high value, not yet implemented:
 [Auto-injected by inject.py — do not manually edit this section]
 <!-- COMPETITORS_END -->
 
+## Verified Research (deep-analyzed)
+<!-- VERIFIED_START -->
+[Auto-injected by verify.py — Tier A items re-evaluated with full content + web verification]
+<!-- VERIFIED_END -->
+
 ## On-Demand Research
 When you need to look something up mid-experiment, use:
 ```bash
