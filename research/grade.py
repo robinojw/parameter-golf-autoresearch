@@ -1,0 +1,266 @@
+import json
+import os
+import shutil
+import subprocess
+from dataclasses import asdict
+from pathlib import Path
+
+from research.fetch import GradedItem, RawItem
+
+GRADED_CACHE_PATH = Path("graded_cache.jsonl")
+BATCH_SIZE = 10
+SUBPROCESS_TIMEOUT_SECONDS = 120
+HARNESS_OPENCODE = "opencode"
+HARNESS_CLAUDE = "claude"
+HARNESS_AUTO = "auto"
+_KEY_ID = "id"
+_KEY_TEXT = "text"
+_KEY_JSON = "json"
+_FENCE_MARKER = "```"
+_PROMPT_SEPARATOR = "\n\n---\n\nItems to grade:\n"
+_PAYLOAD_INDENT = 2
+_ERROR_SCORE = 0.0
+_NEWLINE = "\n"
+
+GRADING_PROMPT = """You are a research grading assistant for a competitive ML challenge.
+
+## CHALLENGE CONSTRAINTS (hard — violations = score 0 on size/time dimensions)
+- Artifact: train_gpt.py code bytes + zstd-compressed weights ≤ 16,000,000 bytes
+- Training: ≤ 600 seconds on 8×H100 SXM
+- No network calls or external downloads during evaluation
+- No validation data access during training
+- Metric: val_bpb on FineWeb — lower is better
+
+## CURRENT LEADERBOARD SOTA: 1.1194 bpb
+
+## PROVEN TECHNIQUES (already on leaderboard — penalize re-implementing):
+int6 QAT, zstd-22, EMA, BigramHash, sliding window eval, partial RoPE,
+XSA attention, SmearGate, OrthoInit, LeakyReLU²,
+Parallel Muon + AdamW WD=0.04, ternary quantization
+
+## SCORING RUBRIC (total /15):
+1. bpb_impact (0-3): evidence this reduces validation loss / bits per byte
+2. size_compatibility (0-3): fits or reduces the 16MB artifact constraint
+3. time_compatibility (0-2): does not exceed 10-minute training budget
+4. implementability (0-4): implementable in train_gpt.py in <100 lines, no new deps
+5. novelty (0-3): not already on leaderboard; opens new search direction
+
+Return a JSON array only — one object per item with these keys:
+id, score, score_breakdown, agent_summary (2-3 sentences), flags (string array)
+
+Do NOT return anything other than the JSON array. No markdown fences, no explanation."""
+
+ABSTRACT_TRUNCATE = 800
+SNIPPET_TRUNCATE = 300
+TIER_A_THRESHOLD = 10
+TIER_B_THRESHOLD = 7
+
+
+def _detect_harness() -> str:
+    configured = os.environ.get("GRADING_HARNESS", HARNESS_AUTO).lower()
+    if configured != HARNESS_AUTO:
+        return configured
+
+    if shutil.which(HARNESS_OPENCODE):
+        return HARNESS_OPENCODE
+    if shutil.which(HARNESS_CLAUDE):
+        return HARNESS_CLAUDE
+
+    raise RuntimeError(
+        "No coding agent found. Install opencode or claude code, "
+        "or set GRADING_HARNESS=opencode|claude in .env"
+    )
+
+
+def _run_opencode(prompt: str) -> str:
+    result = subprocess.run(
+        [HARNESS_OPENCODE, "run", prompt, "--format", _KEY_JSON],
+        capture_output=True,
+        text=True,
+        timeout=SUBPROCESS_TIMEOUT_SECONDS,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"opencode failed (exit {result.returncode}): {result.stderr}"
+        )
+
+    text_parts: list[str] = []
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            event = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") != _KEY_TEXT:
+            continue
+        part_text = event.get("part", {}).get(_KEY_TEXT, "")
+        if part_text:
+            text_parts.append(part_text)
+
+    if not text_parts:
+        raise RuntimeError("opencode returned no text events")
+    return "".join(text_parts)
+
+
+def _run_claude(prompt: str) -> str:
+    result = subprocess.run(
+        [HARNESS_CLAUDE, "-p", prompt, "--output-format", _KEY_JSON, "--bare"],
+        capture_output=True,
+        text=True,
+        timeout=SUBPROCESS_TIMEOUT_SECONDS,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"claude failed (exit {result.returncode}): {result.stderr}")
+
+    try:
+        output = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"claude returned invalid JSON: {exc}") from exc
+
+    text = output.get("result", "")
+    if not text:
+        raise RuntimeError("claude returned empty result")
+    return text
+
+
+def _run_grading_prompt(items_json: str) -> str:
+    harness = _detect_harness()
+    full_prompt = f"{GRADING_PROMPT}\n\n---\n\nItems to grade:\n{items_json}"
+
+    if harness == HARNESS_OPENCODE:
+        return _run_opencode(full_prompt)
+    if harness == HARNESS_CLAUDE:
+        return _run_claude(full_prompt)
+    raise RuntimeError(f"Unknown harness: {harness}")
+
+
+def _extract_json_array(text: str) -> list[dict]:
+    cleaned = text.strip()
+    if cleaned.startswith(_FENCE_MARKER):
+        lines = cleaned.splitlines()
+        lines = [l for l in lines if not l.strip().startswith(_FENCE_MARKER)]
+        cleaned = _NEWLINE.join(lines).strip()
+
+    parsed = json.loads(cleaned)
+
+    if isinstance(parsed, dict):
+        parsed = parsed.get("items", parsed.get("results", []))
+    if not isinstance(parsed, list):
+        parsed = [parsed]
+    return parsed
+
+
+def _build_batch_payload(batch: list[RawItem]) -> str:
+    payload = []
+    for item in batch:
+        payload.append(
+            {
+                _KEY_ID: item.id,
+                "source": item.source,
+                "title": item.title,
+                "abstract": item.abstract[:ABSTRACT_TRUNCATE],
+                "url": item.url,
+                "raw_type": item.raw_type,
+                "content_snippet": item.content_snippet[:SNIPPET_TRUNCATE],
+            }
+        )
+    return json.dumps(payload, indent=_PAYLOAD_INDENT)
+
+
+def _score_to_tier(score: float) -> str:
+    if score >= TIER_A_THRESHOLD:
+        return "A"
+    if score >= TIER_B_THRESHOLD:
+        return "B"
+    return "C"
+
+
+def _make_error_item(item_id: str, reason: str) -> GradedItem:
+    return GradedItem(
+        id=item_id,
+        score=_ERROR_SCORE,
+        tier="C",
+        score_breakdown={},
+        agent_summary=reason,
+        flags=["grading_error"],
+        grade_error=True,
+    )
+
+
+def grade_items(items: list[RawItem]) -> list[GradedItem]:
+    already_graded = _load_graded_ids()
+    to_grade = [item for item in items if item.id not in already_graded]
+
+    if not to_grade:
+        return []
+
+    graded: list[GradedItem] = []
+
+    for batch_start in range(0, len(to_grade), BATCH_SIZE):
+        batch = to_grade[batch_start : batch_start + BATCH_SIZE]
+        batch_json = _build_batch_payload(batch)
+
+        try:
+            response_text = _run_grading_prompt(batch_json)
+            parsed = _extract_json_array(response_text)
+            response_map = {
+                entry[_KEY_ID]: entry
+                for entry in parsed
+                if isinstance(entry, dict) and _KEY_ID in entry
+            }
+
+            for item in batch:
+                graded_result = response_map.get(item.id)
+                if graded_result:
+                    score = float(graded_result.get("score", 0))
+                    graded.append(
+                        GradedItem(
+                            id=item.id,
+                            score=score,
+                            tier=_score_to_tier(score),
+                            score_breakdown=graded_result.get("score_breakdown", {}),
+                            agent_summary=graded_result.get("agent_summary", ""),
+                            flags=graded_result.get("flags", []),
+                        )
+                    )
+                else:
+                    graded.append(
+                        _make_error_item(
+                            item.id, "Grading response missing for this item."
+                        )
+                    )
+
+        except Exception as exc:
+            print(f"[grade] batch failed: {exc}")
+            for item in batch:
+                graded.append(_make_error_item(item.id, f"Grading failed: {exc}"))
+
+    _append_graded(graded)
+    return graded
+
+
+def _load_graded_ids() -> set[str]:
+    ids: set[str] = set()
+    if not GRADED_CACHE_PATH.exists():
+        return ids
+    with open(GRADED_CACHE_PATH, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                ids.add(obj[_KEY_ID])
+            except (json.JSONDecodeError, KeyError):
+                continue
+    return ids
+
+
+def _append_graded(items: list[GradedItem]) -> None:
+    if not items:
+        return
+    with open(GRADED_CACHE_PATH, "a") as f:
+        for item in items:
+            f.write(json.dumps(asdict(item)) + _NEWLINE)
