@@ -8,6 +8,7 @@ from pathlib import Path
 
 RESULTS_TSV_PATH = Path("results.tsv")
 COMPETITOR_SCORES_PATH = Path("competitor_scores.jsonl")
+GRADED_CACHE_PATH = Path("graded_cache.jsonl")
 
 FALLBACK_SOTA: float = 1.1194
 BASELINE_BPB: float = 1.2244
@@ -36,6 +37,7 @@ _COL_STATUS = "status"
 _COL_PROMOTED = "promoted"
 _COL_COST_USD = "cost_usd"
 _COL_DESCRIPTION = "description"
+_COL_SOURCE_ITEM = "source_item"
 _KEY_PAIRS = "pairs"
 _KEY_AVG_DELTA = "avg_delta"
 _KEY_CORRELATION_RELIABLE = "correlation_reliable"
@@ -72,6 +74,7 @@ class _ExperimentRow:
     promoted: str
     cost_usd: float
     description: str
+    source_item: str
 
 
 def _safe_float(raw_str: str) -> float:
@@ -94,6 +97,7 @@ def _parse_single_row(raw: dict) -> _ExperimentRow:
         promoted=_safe_str(raw, _COL_PROMOTED).lower(),
         cost_usd=_safe_float(_safe_str(raw, _COL_COST_USD)),
         description=_safe_str(raw, _COL_DESCRIPTION),
+        source_item=_safe_str(raw, _COL_SOURCE_ITEM),
     )
 
 
@@ -277,3 +281,56 @@ def get_competitor_scores() -> list[dict]:
         )
     entries.sort(key=lambda entry: entry[_COL_VAL_BPB])
     return entries
+
+
+def _infer_source_from_id(item_id: str) -> str:
+    """Infer source name from ID prefix (e.g. 'arxiv:xxx' -> 'arxiv')."""
+    if ":" in item_id:
+        return item_id.split(":", 1)[0]
+    return item_id
+
+
+def _load_graded_source_map() -> dict[str, str]:
+    """Build id -> source name map from graded_cache.jsonl."""
+    source_map: dict[str, str] = {}
+    if not GRADED_CACHE_PATH.exists():
+        return source_map
+    try:
+        with open(GRADED_CACHE_PATH) as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    item_id = str(obj.get("id", ""))
+                    source = str(obj.get("source", ""))
+                    if item_id:
+                        source_map[item_id] = source or _infer_source_from_id(item_id)
+                except (ValueError, TypeError, json.JSONDecodeError):
+                    pass
+    except OSError:
+        pass
+    return source_map
+
+
+def get_source_yield() -> dict[str, dict]:
+    """Per-source counts of items_tried and items_promoted from results.tsv.
+
+    Returns a dict keyed by source name, each value containing:
+      - items_tried: number of experiments attributed to that source
+      - items_promoted: number of promoted experiments attributed to that source
+    """
+    rows = [r for r in _read_rows() if r.source_item]
+    if not rows:
+        return {}
+    source_map = _load_graded_source_map()
+    result: dict[str, dict] = {}
+    for row in rows:
+        source = source_map.get(row.source_item) or _infer_source_from_id(row.source_item)
+        if source not in result:
+            result[source] = {"items_tried": 0, "items_promoted": 0}
+        result[source]["items_tried"] += 1
+        if row.promoted == _PROMOTED_YES:
+            result[source]["items_promoted"] += 1
+    return result

@@ -46,9 +46,14 @@ async def refresh_research(since_hours: int, top_n: int) -> None:
     verified = await run_verification_cycle()
     verified_count = len(verified)
     inject_into_program_md(top_n=top_n)
+    from research.reflect import run_reflection_cycle, bootstrap_technique_map
+
+    bootstrap_technique_map()
+    reflection = await run_reflection_cycle()
+    reflection_msg = "reflected" if reflection else "skipped reflection"
     print(
         f"[research] {len(ungraded)} new items graded, "
-        f"{verified_count} verified. program.md updated."
+        f"{verified_count} verified, {reflection_msg}. program.md updated."
     )
 
 
@@ -75,6 +80,43 @@ def promote_to_runpod(commit_hash: str, dry_run: bool = False) -> None:
     remaining = budget.status()["remaining"]
     if not _check_low_budget(remaining, budget.min_reserve):
         return
+
+    # Threshold check
+    from compute.threshold import compute_promotion_threshold, check_adaptive_fallback
+    from research.experiments import get_current_best_bpb, _read_rows
+
+    current_bpb = get_current_best_bpb()
+    threshold = compute_promotion_threshold(current_bpb, sota=current_bpb)
+
+    rows = _read_rows()
+    candidate_row = None
+    for row in reversed(rows):
+        if row.commit.startswith(commit_hash[:_COMMIT_SHORT_LEN]):
+            candidate_row = row
+            break
+
+    if candidate_row and candidate_row.val_bpb > 0:
+        candidate_bpb = candidate_row.val_bpb
+        passes_threshold = candidate_bpb < current_bpb * threshold
+
+        if not passes_threshold:
+            fallback_window = int(os.getenv("PROMOTION_FALLBACK_WINDOW", "10"))
+            row_dicts = [
+                {"tier": r.tier, "status": r.status, "val_bpb": r.val_bpb}
+                for r in rows
+            ]
+            relaxed = check_adaptive_fallback(
+                row_dicts, current_bpb, threshold, window=fallback_window
+            )
+            if relaxed and candidate_bpb < current_bpb * relaxed:
+                print(f"[threshold] Adaptive fallback: accepting {candidate_bpb:.4f} "
+                      f"(relaxed threshold {relaxed:.4f})")
+            else:
+                required_bpb = current_bpb * threshold
+                print(f"[threshold] BLOCKED: candidate val_bpb={candidate_bpb:.4f} "
+                      f"does not meet threshold {required_bpb:.4f} "
+                      f"(current={current_bpb:.4f}, required improvement={1-threshold:.2%})")
+                return
 
     if dry_run:
         print("[dry-run] Would submit to RunPod. No credits spent.")
@@ -126,17 +168,19 @@ def parse_run_log(log_path: str) -> dict:
     return result
 
 
-def append_to_results_tsv(run_id: str, tier: str, result: dict, cost: float) -> None:
+def append_to_results_tsv(
+    run_id: str, tier: str, result: dict, cost: float, source_item: str = ""
+) -> None:
     path = Path("results.tsv")
     if not path.exists():
         path.write_text(
-            "commit\ttier\tval_bpb\tartifact_bytes\tmemory_gb\tstatus\tpromoted\tcost_usd\tdescription\n"
+            "commit\ttier\tval_bpb\tartifact_bytes\tmemory_gb\tstatus\tpromoted\tcost_usd\tdescription\tsource_item\n"
         )
     with open(path, "a") as f:
         val_bpb = result.get(_KEY_VAL_BPB, "")
         artifact_bytes = result.get(_KEY_ARTIFACT_BYTES, "")
         f.write(
-            f"{run_id}\t{tier}\t{val_bpb}\t{artifact_bytes}\t\tkeep\tyes\t{cost:.2f}\t\n"
+            f"{run_id}\t{tier}\t{val_bpb}\t{artifact_bytes}\t\tkeep\tyes\t{cost:.2f}\t\t{source_item}\n"
         )
 
 
@@ -198,12 +242,57 @@ def main() -> None:
     _store_true = "store_true"
     parser.add_argument("--budget-status", action=_store_true)
     parser.add_argument("--dry-run", action=_store_true)
+    parser.add_argument("--critique", action=_store_true)
+    parser.add_argument("--tournament", action=_store_true)
+    parser.add_argument("--tournament-prompt", type=str, default="")
+    parser.add_argument("--candidates", type=int, default=4)
+    parser.add_argument("--survivors", type=int, default=2)
+    parser.add_argument("--elim-iterations", type=int, default=100)
+    parser.add_argument("--full-iterations", type=int, default=500)
+    parser.add_argument("--parallel", type=int, default=1)
+    parser.add_argument("--cooldown", type=int, default=3)
+    parser.add_argument("--auto-promote", action=_store_true)
+    parser.add_argument("--threshold-status", action=_store_true)
     args = parser.parse_args()
 
     if args.budget_status:
         print_budget_status()
     elif args.promote:
         promote_to_runpod(args.promote, dry_run=args.dry_run)
+    elif args.critique:
+        from research.critic import run_critique
+        run_critique()
+    elif args.tournament:
+        from compute.tournament import run_tournament, TournamentConfig
+        config = TournamentConfig(
+            candidates=args.candidates,
+            survivors=args.survivors,
+            elim_iterations=args.elim_iterations,
+            full_iterations=args.full_iterations,
+            parallel=args.parallel,
+            cooldown=args.cooldown,
+            auto_promote=args.auto_promote,
+            prompt=args.tournament_prompt,
+        )
+        result = run_tournament(config)
+        winner = result.get("winner")
+        if winner and args.auto_promote and winner.get("val_bpb"):
+            print("[tournament] Auto-promote: checking threshold...")
+            append_to_results_tsv(
+                f"tournament_{winner['name']}",
+                "tournament_final",
+                {"val_bpb": winner["val_bpb"]},
+                0.0,
+            )
+    elif args.threshold_status:
+        from compute.threshold import compute_promotion_threshold
+        from research.experiments import get_current_best_bpb
+        current = get_current_best_bpb()
+        threshold = compute_promotion_threshold(current, sota=current)
+        required_bpb = current * threshold
+        print(f"  Current best: {current:.4f} bpb")
+        print(f"  Threshold ratio: {threshold:.4f} ({1-threshold:.2%} improvement required)")
+        print(f"  Candidate must beat: {required_bpb:.4f} bpb")
     else:
         since_hours = int(os.getenv("SINCE_HOURS", "48"))
 

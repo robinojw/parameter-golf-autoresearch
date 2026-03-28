@@ -12,7 +12,7 @@ An autonomous experiment loop for [OpenAI's Parameter Golf](https://github.com/o
 
 Karpathy's [autoresearch](https://github.com/karpathy/autoresearch) demonstrated that an agent can run this kind of experiment loop autonomously: modify a training script, train, evaluate, keep or revert, repeat. The core loop is simple and it works — about 12 experiments per hour on a single GPU, designed to run overnight. I wanted to apply that same idea to Parameter Golf, but the challenge adds constraints that autoresearch wasn't designed for. The official runs require 8×H100s at ~$20/hour, so you can't just loop freely — you need cost-aware gating between cheap local validation and expensive official runs. The competition is also a moving target; an agent that only sees its own code will miss techniques that other competitors publish mid-challenge. And the artifact size constraint needs continuous enforcement, not just loss optimization.
 
-This project keeps autoresearch's modify-train-evaluate-decide loop at the center, then adds the infrastructure around it: a two-tier compute model that uses local MLX runs as a free scratchpad before promoting to RunPod, a research pipeline that ingests papers and competitor activity from 10 sources and grades them against the challenge's specific constraints, and a budget manager that enforces hard spend caps with atexit pod termination as a safety net. MLX is your scratchpad; RunPod is your printer.
+This project keeps autoresearch's modify-train-evaluate-decide loop at the center, then adds the infrastructure around it: a two-tier compute model that uses local MLX runs as a free scratchpad before promoting to RunPod, a research pipeline that ingests papers and competitor activity from 10 sources and grades them against the challenge's specific constraints, a budget manager that enforces hard spend caps with atexit pod termination as a safety net, and an adaptive intelligence layer that synthesizes experiment history into strategy, gates promotion on a dynamic threshold, and tests hypotheses in tournament brackets. MLX is your scratchpad; RunPod is your printer.
 
 ## Architecture
 
@@ -27,7 +27,11 @@ graph LR
     subgraph "Orchestration"
         ORC["orchestrate.py"]
         BUD["BudgetManager\nreserve floor + 1hr rate limit"]
+        THR["Dynamic Threshold\nscales with SOTA distance"]
+        CRT["Critic Gate\ndeterministic + LLM checks"]
         ORC --> BUD
+        ORC --> THR
+        ORC --> CRT
     end
 
     subgraph "Tier 2 - ~$3.50 per run"
@@ -37,16 +41,20 @@ graph LR
         POD --> TRAIN --> TSV
     end
 
-    LOG -- ">=3% improvement" --> ORC
+    LOG -- "passes dynamic\nthreshold" --> ORC
     BUD -- "can_submit = OK" --> POD
     TRAIN -. "atexit / SIGTERM" .-> TERM["terminate_pod()"]
 ```
 
 ## How It Works
 
-The experiment loop is the central unit of work. Each cycle starts with a hypothesis, a local artifact size check (`python measure_artifact.py`), and a 500-iteration MLX smoke run. If local `val_bpb` drops at least 3% relative to the running baseline, the commit qualifies for promotion. The agent calls `python orchestrate.py --promote <commit_hash>`, which triggers the full Tier 2 flow: budget check, pod launch, rsync of `train_gpt.py` and data, `torchrun` across 8 GPUs, log retrieval, pod termination, and an append to `results.tsv`.
+The experiment loop is the central unit of work. Each cycle starts with a hypothesis, a critic check (`python orchestrate.py --critique`) that validates artifact size, diff size, and similarity to past failures, and a 500-iteration MLX smoke run. If local `val_bpb` passes the dynamic promotion threshold — which scales based on distance from SOTA, requiring larger improvements when far away and accepting smaller gains near the frontier — the commit qualifies for promotion. The agent calls `python orchestrate.py --promote <commit_hash>`, which triggers the full Tier 2 flow: budget check, threshold check, pod launch, rsync of `train_gpt.py` and data, `torchrun` across 8 GPUs, log retrieval, pod termination, and an append to `results.tsv`.
+
+If no experiments pass the threshold after 10 consecutive runs, an adaptive fallback relaxes it to accept the best improvement observed in that window. This prevents permanent stalls near SOTA.
 
 The orchestrator never blocks the experiment loop. After queuing a promotion, the agent continues Tier 1 experiments and checks `results.tsv` periodically. If a RunPod result confirms the improvement, the branch advances. If it's worse than the MLX signal predicted, the agent investigates the PyTorch translation. Architecture changes that work in MLX don't always transfer cleanly to PyTorch at scale, and that delta is worth understanding.
+
+For structured hypothesis testing, the **tournament mode** (`python orchestrate.py --tournament`) generates 4 candidate modifications via LLM, runs each for 100 iterations in an elimination round, advances the top 2 to a full 500-iteration run, and reports the winner. Runs are sequential by default to avoid MLX resource contention on Apple Silicon, with a configurable cooldown between runs for thermal settling. This trades a few extra minutes for higher confidence that the promoted idea is the best available, not just the first one tried.
 
 Budget enforcement operates on two axes. `BudgetManager.can_submit()` blocks any Tier 2 submission if the remaining balance is below the configured reserve floor. A separate one-hour rate limit prevents back-to-back submissions even when runs finish quickly. Both checks persist across process restarts in `budget.json`.
 
@@ -76,11 +84,17 @@ graph LR
     FETCH --> CACHE["raw_cache.jsonl"]
     CACHE --> GRADE["grade_items()\nopencode or claude code\nscore /15 across 5 dimensions"]
     GRADE --> GCACHE["graded_cache.jsonl"]
-    GCACHE --> INJECT["inject_into_program_md()\ntop-N by score"]
-    INJECT --> PROG["program.md\nRESEARCH_START section"]
+    GCACHE --> VERIFY["verify top Tier A\nfull content + web evidence"]
+    VERIFY --> REFLECT["reflect()\nsynthesize strategy\nupdate technique map"]
+    REFLECT --> INJECT["inject_into_program_md()\nresearch + strategy + experiments\n+ competitors + technique map"]
+    INJECT --> PROG["program.md"]
 ```
 
 Each paper gets scored across five dimensions: `bpb_impact`, `size_compatibility`, `time_compatibility`, `implementability`, and `novelty`. The grader knows the current SOTA, the techniques already on the leaderboard, and the hard artifact and training constraints. A paper that requires a new pip dependency, pushes the 16MB limit, or would exceed 600s of training time scores low on `implementability` or `time_compatibility` regardless of the underlying idea's quality. The top 12 scored items, by default, get injected into the `## Research Context` section of `program.md`, which is the agent's working context.
+
+After grading and verification, a **reflection cycle** synthesizes experiment history into strategic guidance. It identifies failure patterns, exhausted vs. promising search dimensions, and recommends next experiments. The output is written to `strategy.md` and injected into `program.md` so the agent sees synthesized strategic state alongside raw data — not just "what happened" but "what it means."
+
+The reflection also maintains a **technique adjacency map** (`technique_map.json`) — a graph of technique relationships with status labels (proven, exploring, dead_end, untried). This gives the agent a structured view of the search space: which branches are dead ends, which show monotonic improvement, and which remain unexplored.
 
 For ad-hoc lookups mid-experiment, the agent can call `python research/sources/tavily_agent.py --query "..."` directly. This bypasses the batch pipeline and calls Tavily's extract mode for a specific question. Cost is around $0.01/call.
 
@@ -88,24 +102,33 @@ For ad-hoc lookups mid-experiment, the agent can call `python research/sources/t
 
 ```
 parameter-golf-autoresearch/
-├── orchestrate.py          # entry point: research refresh, promotion, budget status
-├── program.md              # agent working context and research injection target
+├── orchestrate.py          # entry point: research refresh, promotion, budget, critic, tournament
+├── program.md              # agent working context: research, strategy, technique map, experiments
 ├── train_gpt_mlx.py        # Tier 1 training script (MLX, Apple Silicon)
 ├── train_gpt.py            # Tier 2 training script (PyTorch, torchrun)
 ├── measure_artifact.py     # artifact size check: code + zstd-compressed weights, <=16MB
 ├── compute/
 │   ├── budget.py           # BudgetManager: spend tracking, reserve floor, rate limiting
+│   ├── threshold.py        # dynamic promotion threshold: scales with SOTA distance + adaptive fallback
+│   ├── tournament.py       # tournament mode: generate → eliminate → finalize hypothesis testing
 │   ├── runpod_client.py    # pod lifecycle: launch, poll, terminate, atexit cleanup
 │   └── sync.py             # rsync push/pull and remote torchrun over SSH
 ├── research/
 │   ├── fetch.py            # async gather from all sources, deduplication, cache write
 │   ├── grade.py            # LLM grading in batches of 10, five-dimension scoring
-│   ├── inject.py           # top-N injection into program.md RESEARCH_START section
+│   ├── verify.py           # deep verification of Tier A items with full content + web evidence
+│   ├── reflect.py          # reflection cycle: strategy synthesis + technique map maintenance
+│   ├── critic.py           # pre-commit gate: artifact size, diff size, similarity, LLM review
+│   ├── inject.py           # section injection into program.md (research, strategy, technique map, ...)
+│   ├── experiments.py      # read-only API for results.tsv, competitor data, source yield tracking
 │   └── sources/            # one module per source (arxiv, openreview, semantic_scholar, ...)
+├── tests/                  # pytest suite (56 tests)
 ├── data/                   # FineWeb token data for training
 ├── runpod_results/         # logs pulled from completed RunPod runs
-├── results.tsv             # run history: commit, tier, val_bpb, artifact_bytes, cost
+├── results.tsv             # run history: commit, tier, val_bpb, artifact_bytes, cost, source_item
 ├── budget.json             # persisted spend state
+├── strategy.md             # synthesized strategic guidance (generated by reflection cycle)
+├── technique_map.json      # technique relationship graph (generated by reflection cycle)
 ├── raw_cache.jsonl         # fetched research items
 └── graded_cache.jsonl      # scored research items
 ```
@@ -116,13 +139,13 @@ parameter-golf-autoresearch/
    ```bash
    git clone https://github.com/you/parameter-golf-autoresearch
    cd parameter-golf-autoresearch
-   pip install -e .
+   pip install -e ".[dev]"
    ```
 
 2. Copy the env template and fill in the required keys:
    ```bash
    cp .env.example .env
-    # minimum required: RUNPOD_API_KEY, RUNPOD_TEMPLATE_ID, GITHUB_TOKEN
+   # minimum required: RUNPOD_API_KEY, RUNPOD_TEMPLATE_ID, GITHUB_TOKEN
    ```
 
 3. Download FineWeb token data into `data/` per the challenge instructions.
@@ -139,16 +162,28 @@ parameter-golf-autoresearch/
    python orchestrate.py
    ```
 
-6. Check budget status at any time:
+6. Check budget and threshold status at any time:
    ```bash
    python orchestrate.py --budget-status
+   python orchestrate.py --threshold-status
    ```
 
 7. Manually promote a commit to RunPod:
    ```bash
-   # dry-run first to confirm the budget check passes
+   # dry-run first to confirm the budget and threshold checks pass
    python orchestrate.py --promote <commit_hash> --dry-run
    python orchestrate.py --promote <commit_hash>
+   ```
+
+8. Run a pre-commit critic check before training:
+   ```bash
+   python orchestrate.py --critique
+   ```
+
+9. Run a tournament to test multiple hypotheses:
+   ```bash
+   python orchestrate.py --tournament
+   python orchestrate.py --tournament --prompt "focus on test-time training" --candidates 6
    ```
 
 ## Environment Variables
@@ -165,8 +200,7 @@ parameter-golf-autoresearch/
 | `REFRESH_HOURS` | No | `6` | Research pipeline refresh cadence in hours |
 | `TOP_N_INJECT` | No | `12` | Max research items injected into program.md |
 | `SINCE_HOURS` | No | `48` | Lookback window for new papers and posts |
-| `LOCAL_PROMOTION_THRESHOLD` | No | `0.97` | Required local val_bpb ratio to baseline to qualify for promotion |
-| `LOCAL_BASELINE` | No | | Set after your first MLX baseline run |
+| `PROMOTION_FALLBACK_WINDOW` | No | `10` | Consecutive local runs before adaptive threshold relaxation |
 | `S2_API_KEY` | No | | Semantic Scholar API key for higher rate limits |
 | `TAVILY_MONTHLY_BUDGET_USD` | No | `5.00` | Soft cap on Tavily spend |
 | `TAVILY_HOURLY_BREAKING_NEWS` | No | `true` | Enable the hourly Tavily news daemon thread |
@@ -185,4 +219,4 @@ Tavily adds up if you leave the breaking news daemon running continuously or fir
 
 The challenge presents itself as an ML optimization problem, but most of the interesting engineering lives in the infrastructure around the model. The metric is `val_bpb` and the model changes happen in two Python files, but the harder problems are: how do you prevent a hung pod from draining your account, how do you route research signal into an agent's context without overwhelming it, how do you decide which local improvements are worth paying $3.50 to validate, and how do you maintain a clean audit trail across hundreds of experiments on two different hardware targets?
 
-The answers here are deliberately unclever. `atexit` handles the pod lifecycle. A five-dimension LLM grader handles the research signal. The 3% local threshold handles the promotion gate. `results.tsv` handles the audit trail. None of it is surprising, but it's the kind of plumbing that needs to exist before you can run experiments reliably at any volume. The model is rarely the hard part; the system around it is.
+The answers here are deliberately unclever. `atexit` handles the pod lifecycle. A five-dimension LLM grader handles the research signal. A dynamic threshold that scales with distance from SOTA handles the promotion gate. A periodic reflection cycle synthesizes strategy from raw experiment history. A critic catches repeated mistakes before they waste a training run. A tournament tests multiple hypotheses instead of betting on the first plausible idea. `results.tsv` handles the audit trail. None of it is surprising, but it's the kind of plumbing that needs to exist before you can run experiments reliably at any volume. The model is rarely the hard part; the system around it is.

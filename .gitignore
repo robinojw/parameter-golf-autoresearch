@@ -42,3 +42,11 @@ Thumbs.db
 .venv/
 .python-version
 uv.lock
+
+# Generated state
+strategy.md
+technique_map.json
+verified_cache.jsonl
+competitor_scores.jsonl
+tournament_runs/
+tournament_results/

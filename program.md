@@ -20,7 +20,7 @@ MLX_EAGER_EVAL=1 \
 python3 train_gpt_mlx.py > run.log 2>&1
 ```
 Interpret results: local val_bpb is NOT the challenge score.
-Use it only as a directional signal. Promote if local bpb improves ≥3% over local baseline.
+Use it only as a directional signal. The orchestrator computes a dynamic promotion threshold based on distance from SOTA.
 
 **TIER 2 — RunPod 8×H100 (~$3.50/run, SPEND CAREFULLY)**
 Use for: validating ideas that passed Tier 1 promotion threshold only
@@ -68,6 +68,16 @@ From the challenge wishlist — high value, not yet implemented:
 - Megakernels: custom triton for dominant matmuls
 - Adapters on random linear projection maps
 
+## Strategy
+<!-- STRATEGY_START -->
+[No strategy yet — reflection runs after experiments accumulate]
+<!-- STRATEGY_END -->
+
+## Technique Map
+<!-- TECHNIQUE_MAP_START -->
+[No technique map yet — will be generated after first reflection]
+<!-- TECHNIQUE_MAP_END -->
+
 ## Research Context
 <!-- RESEARCH_START -->
 [Auto-injected by inject.py — do not manually edit this section]
@@ -112,11 +122,12 @@ LOOP FOREVER:
 ### Every experiment (Tier 1):
 1. **Hypothesis**: one sentence — "I expect X to reduce val_bpb by ~Y% because Z"
 
-2. **Artifact check** (before training):
+2. **Critic check** (before training):
    ```bash
-   python measure_artifact.py
+   python orchestrate.py --critique
    ```
-   If > 15,800,000 bytes: redesign. Leave 200KB headroom for safety.
+   If BLOCK: fix the issue. If WARN: consider the feedback, proceed if justified.
+   This checks artifact size, diff size, and similarity to past failures.
 
 3. **Implement** in `train_gpt_mlx.py`. Keep diff < 100 lines.
    Do not add new pip dependencies.
@@ -138,17 +149,17 @@ LOOP FOREVER:
 
 7. **Log to results.tsv** (tab-separated):
    ```
-   commit  tier  val_bpb  artifact_bytes  memory_gb  status  promoted  description
+   commit  tier  val_bpb  artifact_bytes  memory_gb  status  promoted  cost_usd  description  source_item
    ```
    `tier`: `local` or `runpod`
    `status`: `keep`, `discard`, `crash`
    `promoted`: `yes`, `no`, or `pending`
+   `source_item`: the research item ID that inspired this experiment (e.g., `arxiv:2401.12345`), or empty if original idea.
 
 8. **Decision**:
-   - Improved ≥ 3% AND artifact ok → `keep`, advance branch
-     → If you believe this is a strong result: add `promoted: pending`, then
-       `python orchestrate.py --promote <commit_hash>`
-   - Improved < 3% OR no change → `keep` only if simplified code
+   - The orchestrator enforces the promotion threshold dynamically (scales with distance from SOTA).
+     Run `python orchestrate.py --promote <commit_hash>` — it will tell you if the result qualifies.
+   - No improvement or marginal → `keep` only if simplified code
    - Worse → `git reset --hard HEAD~1`, `discard`
    - Crash after 2 fix attempts → log `crash`, move on
 
@@ -161,6 +172,13 @@ When `orchestrate.py` finishes a RunPod run it appends to results.tsv automatica
 Check periodically: `tail -n 5 results.tsv`
 If RunPod val_bpb confirms improvement → flag as `keep (runpod-confirmed)`.
 If RunPod val_bpb is worse → investigate why (architecture translation error? scale mismatch?).
+
+### Tournament Mode
+For structured hypothesis testing, use the tournament:
+```bash
+python orchestrate.py --tournament [--prompt "focus on test-time training"]
+```
+This generates 4 candidates, eliminates 2 after 100 iterations, then runs the survivors for 500 iterations. The winner is reported with its hypothesis and val_bpb.
 
 ## Timeout Rules
 - Tier 1: if run exceeds 10 minutes wall-clock, kill and treat as crash

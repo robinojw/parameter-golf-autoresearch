@@ -8,7 +8,9 @@ from research.experiments import (
     get_experiment_history_bullets,
     get_tier_correlation,
 )
-from research.verify import get_verified_items
+from research.reflect import STRATEGY_PATH, _read_strategy_md
+
+TECHNIQUE_MAP_PATH = Path("technique_map.json")
 
 
 def inject_into_program_md(
@@ -63,6 +65,8 @@ def inject_into_program_md(
     inject_competitors_section(program_md_path)
     inject_verified_section(program_md_path)
     inject_dynamic_baseline(program_md_path)
+    inject_strategy_section(program_md_path)
+    inject_technique_map_section(program_md_path)
 
 
 def inject_experiments_section(program_md_path: str = "program.md") -> None:
@@ -136,6 +140,7 @@ def inject_verified_section(program_md_path: str = "program.md") -> None:
     if not program_path.exists():
         return
 
+    from research.verify import get_verified_items  # lazy import: verify pulls in tavily
     verified = get_verified_items()
     if not verified:
         section_body = (
@@ -179,6 +184,109 @@ def inject_dynamic_baseline(program_md_path: str = "program.md") -> None:
         r"\*\*SOTA: [\d.]+ bpb\. Baseline: 1\.2244 bpb\.\*\*",
         f"**SOTA: {current_best} bpb. Baseline: 1.2244 bpb.**",
         content,
+    )
+    program_path.write_text(new_content)
+
+
+def inject_strategy_section(program_md_path: str = "program.md") -> None:
+    program_path = Path(program_md_path)
+    if not program_path.exists():
+        return
+
+    strategy_text = _read_strategy_md(strategy_path=STRATEGY_PATH)
+    if not strategy_text:
+        section_body = "[No strategy recorded yet — run reflection cycle to populate]"
+    else:
+        section_body = strategy_text
+
+    replacement = f"<!-- STRATEGY_START -->\n{section_body}\n<!-- STRATEGY_END -->"
+
+    content = program_path.read_text()
+    new_content = re.sub(
+        r"<!-- STRATEGY_START -->.*?<!-- STRATEGY_END -->",
+        replacement,
+        content,
+        flags=re.DOTALL,
+    )
+    program_path.write_text(new_content)
+
+
+def render_technique_tree(data: dict) -> str:
+    """Render the technique map as an indented tree string.
+
+    Root nodes (not children of anything) are listed first, with children
+    indented by 2 spaces. Format: `- [status] name (bpb X.XXXX)`.
+    Returns empty string for empty nodes.
+    """
+    nodes = data.get("nodes", {})
+    edges = data.get("edges", [])
+
+    if not nodes:
+        return ""
+
+    # Build parent→children lookup
+    children_of: dict[str, list[str]] = {}
+    all_children: set[str] = set()
+    for edge in edges:
+        parent = edge.get("parent", "")
+        child = edge.get("child", "")
+        if parent and child:
+            children_of.setdefault(parent, []).append(child)
+            all_children.add(child)
+
+    # Root nodes are those not listed as children
+    roots = [name for name in nodes if name not in all_children]
+    # Also include orphaned children that reference non-existent parents
+    orphans = [name for name in nodes if name in all_children and name not in nodes]
+
+    def _format_node(name: str, indent: int) -> list[str]:
+        node_data = nodes.get(name, {})
+        status = node_data.get("status", "unknown")
+        best_bpb = node_data.get("best_bpb")
+        bpb_str = f" (bpb {best_bpb})" if best_bpb is not None else ""
+        prefix = "  " * indent
+        lines = [f"{prefix}- [{status}] {name}{bpb_str}"]
+        for child in children_of.get(name, []):
+            lines.extend(_format_node(child, indent + 1))
+        return lines
+
+    output_lines: list[str] = []
+    for root in roots:
+        output_lines.extend(_format_node(root, 0))
+
+    return "\n".join(output_lines)
+
+
+def inject_technique_map_section(program_md_path: str = "program.md") -> None:
+    """Read technique_map.json, render as tree, inject into program.md."""
+    program_path = Path(program_md_path)
+    if not program_path.exists():
+        return
+
+    technique_data: dict = {"nodes": {}, "edges": []}
+    if TECHNIQUE_MAP_PATH.exists():
+        try:
+            with open(TECHNIQUE_MAP_PATH) as fh:
+                technique_data = json.load(fh)
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    tree_text = render_technique_tree(technique_data)
+    if not tree_text:
+        section_body = "[No technique map yet — run reflection cycle to populate]"
+    else:
+        section_body = tree_text
+
+    replacement = (
+        f"<!-- TECHNIQUE_MAP_START -->\n{section_body}\n<!-- TECHNIQUE_MAP_END -->"
+    )
+
+    content = program_path.read_text()
+    new_content = re.sub(
+        r"<!-- TECHNIQUE_MAP_START -->.*?<!-- TECHNIQUE_MAP_END -->",
+        replacement,
+        content,
+        flags=re.DOTALL,
     )
     program_path.write_text(new_content)
 
