@@ -253,6 +253,12 @@ def main() -> None:
     parser.add_argument("--cooldown", type=int, default=3)
     parser.add_argument("--auto-promote", action=_store_true)
     parser.add_argument("--threshold-status", action=_store_true)
+    parser.add_argument("--check-constraints", action=_store_true)
+    parser.add_argument("--params", type=int, default=20_000_000)
+    parser.add_argument("--bits", type=int, default=6)
+    parser.add_argument("--code-bytes", type=int, default=0)
+    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--seq-len", type=int, default=512)
     args = parser.parse_args()
 
     if args.budget_status:
@@ -293,6 +299,16 @@ def main() -> None:
         print(f"  Current best: {current:.4f} bpb")
         print(f"  Threshold ratio: {threshold:.4f} ({1-threshold:.2%} improvement required)")
         print(f"  Candidate must beat: {required_bpb:.4f} bpb")
+    elif args.check_constraints:
+        from compute.constraints import feasibility_report, print_report
+        report = feasibility_report(
+            params=args.params,
+            bits=args.bits,
+            code_bytes=args.code_bytes,
+            batch_size=args.batch_size,
+            seq_len=args.seq_len,
+        )
+        print_report(report)
     else:
         since_hours = int(os.getenv("SINCE_HOURS", "48"))
 

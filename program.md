@@ -115,12 +115,39 @@ Cost: ~$0.01/call. Budget: see TAVILY_MONTHLY_BUDGET_USD in .env.
 
 Do NOT use this for general exploration — use it for targeted questions only.
 
+## Constraint Calculator
+Before designing an experiment, verify mathematical feasibility:
+```bash
+python orchestrate.py --check-constraints --params 23000000 --bits 6 --code-bytes 30000
+```
+This checks:
+- **Artifact size**: will N params at B bits fit in 16MB after zstd compression?
+- **Training steps**: how many steps fit in 600s at your batch size?
+- **Quantization MSE**: what's the theoretical noise floor at this bit-width?
+- **Entropy bound**: can zstd physically compress these weights below 16MB?
+
+Use this to validate ideas BEFORE writing code. Examples:
+```bash
+# "Can I fit 30M params at int5?"
+python orchestrate.py --check-constraints --params 30000000 --bits 5
+
+# "What about int4 with a large model?"
+python orchestrate.py --check-constraints --params 50000000 --bits 4 --code-bytes 40000
+
+# "How many steps do I get with a bigger batch?"
+python orchestrate.py --check-constraints --params 20000000 --bits 6 --batch-size 128 --seq-len 1024
+```
+
+If the report says NOT FEASIBLE, do not proceed — redesign the approach.
+The calculator auto-calibrates from weight files on disk when available.
+
 ## Experiment Loop
 
 LOOP FOREVER:
 
 ### Every experiment (Tier 1):
 1. **Hypothesis**: one sentence — "I expect X to reduce val_bpb by ~Y% because Z"
+   Validate with `python orchestrate.py --check-constraints` before proceeding.
 
 2. **Critic check** (before training):
    ```bash
