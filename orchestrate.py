@@ -17,6 +17,8 @@ _KEY_ARTIFACT_BYTES = "artifact_bytes"
 _COMMIT_SHORT_LEN = 7
 _LOW_BUDGET_FACTOR = 2
 _DEFAULT_REFRESH_HOURS = 6
+_DEFAULT_FAST_REFRESH_HOURS = 2
+_DEFAULT_SLOW_REFRESH_HOURS = 12
 _DEFAULT_TOP_N = 12
 _SECONDS_PER_HOUR = 3600
 _BREAKING_NEWS_INTERVAL_HOURS = 1
@@ -33,6 +35,7 @@ def _make_budget_manager():
 
 
 async def refresh_research(since_hours: int, top_n: int) -> None:
+    """Full refresh: all sources + grade + verify + reflect + inject."""
     from research.fetch import fetch_all
     from research.grade import grade_items, _load_graded_ids
     from research.inject import inject_into_program_md
@@ -55,6 +58,21 @@ async def refresh_research(since_hours: int, top_n: int) -> None:
         f"[research] {len(ungraded)} new items graded, "
         f"{verified_count} verified, {reflection_msg}. program.md updated."
     )
+
+
+async def refresh_fast_sources(since_hours: int, top_n: int) -> None:
+    """Fast refresh: GitHub + Tavily only, then grade + inject. No verify/reflect."""
+    from research.fetch import fetch_fast
+    from research.grade import grade_items, _load_graded_ids
+    from research.inject import inject_into_program_md
+
+    new_items = await fetch_fast(since_hours=since_hours)
+    already_graded = _load_graded_ids()
+    ungraded = [i for i in new_items if i.id not in already_graded]
+    if ungraded:
+        grade_items(ungraded)
+    inject_into_program_md(top_n=top_n)
+    print(f"[research:fast] {len(ungraded)} new items graded. program.md updated.")
 
 
 def _check_low_budget(remaining: float, min_reserve: float) -> bool:
@@ -253,6 +271,14 @@ def main() -> None:
     parser.add_argument("--cooldown", type=int, default=3)
     parser.add_argument("--auto-promote", action=_store_true)
     parser.add_argument("--threshold-status", action=_store_true)
+    parser.add_argument("--refresh", action=_store_true,
+                        help="Run a full research refresh now (all sources)")
+    parser.add_argument("--refresh-fast", action=_store_true,
+                        help="Run a fast refresh (GitHub + Tavily only)")
+    parser.add_argument("--fast-refresh-hours", type=int,
+                        default=_DEFAULT_FAST_REFRESH_HOURS)
+    parser.add_argument("--slow-refresh-hours", type=int,
+                        default=_DEFAULT_SLOW_REFRESH_HOURS)
     parser.add_argument("--check-constraints", action=_store_true)
     parser.add_argument("--params", type=int, default=20_000_000)
     parser.add_argument("--bits", type=int, default=6)
@@ -309,15 +335,41 @@ def main() -> None:
             seq_len=args.seq_len,
         )
         print_report(report)
+    elif args.refresh:
+        since_hours = int(os.getenv("SINCE_HOURS", "48"))
+        asyncio.run(refresh_research(since_hours, args.top_n))
+    elif args.refresh_fast:
+        since_hours = int(os.getenv("SINCE_HOURS", "48"))
+        asyncio.run(refresh_fast_sources(since_hours, args.top_n))
     else:
         since_hours = int(os.getenv("SINCE_HOURS", "48"))
 
         _start_breaking_news_thread()
 
+        # Tiered refresh loop:
+        # - Fast sources (GitHub, Tavily) every fast_refresh_hours (default 2h)
+        # - Full refresh (all sources + verify + reflect) every slow_refresh_hours (default 12h)
+        fast_interval = args.fast_refresh_hours * _SECONDS_PER_HOUR
+        slow_interval = args.slow_refresh_hours * _SECONDS_PER_HOUR
+        last_slow = 0.0  # force full refresh on first iteration
+
         while True:
-            asyncio.run(refresh_research(since_hours, args.top_n))
-            print(f"[orchestrate] Sleeping {args.refresh_hours}h until next refresh...")
-            time.sleep(args.refresh_hours * _SECONDS_PER_HOUR)
+            now = time.time()
+            time_since_slow = now - last_slow
+
+            if time_since_slow >= slow_interval:
+                print("[orchestrate] Running full refresh (all sources)...")
+                asyncio.run(refresh_research(since_hours, args.top_n))
+                last_slow = time.time()
+            else:
+                print("[orchestrate] Running fast refresh (GitHub + Tavily)...")
+                asyncio.run(refresh_fast_sources(since_hours, args.top_n))
+
+            next_slow_in = slow_interval - (time.time() - last_slow)
+            sleep_time = min(fast_interval, next_slow_in)
+            print(f"[orchestrate] Next fast refresh in {sleep_time / _SECONDS_PER_HOUR:.1f}h, "
+                  f"next full refresh in {next_slow_in / _SECONDS_PER_HOUR:.1f}h")
+            time.sleep(sleep_time)
 
 
 if __name__ == "__main__":

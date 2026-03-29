@@ -35,7 +35,51 @@ class GradedItem:
     grade_error: bool = False
 
 
+async def fetch_fast(since_hours: int = 48) -> list[RawItem]:
+    """Fetch from fast-moving sources: GitHub PRs, GitHub code search, Tavily scheduled.
+
+    These sources update continuously — competitors merge PRs at any time,
+    web content appears hourly. Safe to call every 1-2 hours.
+    """
+    from research.sources.github_prs import fetch_github_prs
+    from research.sources.github_code_search import fetch_github_code_search
+    from research.sources.tavily_scheduled import fetch_tavily_scheduled
+
+    results = await asyncio.gather(
+        fetch_github_prs(since_hours),
+        fetch_github_code_search(),
+        fetch_tavily_scheduled(),
+        return_exceptions=True,
+    )
+
+    return _dedup_and_cache(results)
+
+
+async def fetch_slow(since_hours: int = 48) -> list[RawItem]:
+    """Fetch from slow-moving sources: ArXiv, OpenReview, Semantic Scholar, RSS, CodeSOTA.
+
+    These sources update daily at most. No benefit to checking more than every 12-24h.
+    """
+    from research.sources.arxiv import fetch_arxiv
+    from research.sources.openreview import fetch_openreview
+    from research.sources.semantic_scholar import fetch_semantic_scholar
+    from research.sources.feeds import fetch_feeds
+    from research.sources.codesota import fetch_codesota
+
+    results = await asyncio.gather(
+        fetch_arxiv(since_hours),
+        fetch_openreview(since_hours),
+        fetch_semantic_scholar(since_hours),
+        fetch_feeds(since_hours),
+        fetch_codesota(),
+        return_exceptions=True,
+    )
+
+    return _dedup_and_cache(results)
+
+
 async def fetch_all(since_hours: int = 48) -> list[RawItem]:
+    """Fetch from all sources. Used for full refresh cycles."""
     from research.sources.arxiv import fetch_arxiv
     from research.sources.openreview import fetch_openreview
     from research.sources.semantic_scholar import fetch_semantic_scholar
@@ -55,6 +99,11 @@ async def fetch_all(since_hours: int = 48) -> list[RawItem]:
         return_exceptions=True,
     )
 
+    return _dedup_and_cache(results)
+
+
+def _dedup_and_cache(results: list) -> list[RawItem]:
+    """Deduplicate fetch results against the cache and append new items."""
     existing_ids = _load_existing_ids()
     all_items: list[RawItem] = []
     seen_ids: set[str] = set()

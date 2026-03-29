@@ -99,7 +99,25 @@ From the challenge wishlist — high value, not yet implemented:
 <!-- VERIFIED_END -->
 
 ## On-Demand Research
-When you need to look something up mid-experiment, use:
+When you need fresh research context, pull it on demand:
+```bash
+# Full refresh — all 10 sources + grade + verify + reflect
+python orchestrate.py --refresh
+
+# Fast refresh — GitHub PRs + Tavily only (faster, catches competitor moves)
+python orchestrate.py --refresh-fast
+```
+
+Use `--refresh` when:
+- Starting a new experiment direction
+- After a string of failures (the reflection cycle will synthesize what went wrong)
+- When the technique map shows exhausted branches and you need new ideas
+
+Use `--refresh-fast` when:
+- You want to check if competitors shipped something new
+- You need a quick context update without waiting for ArXiv/OpenReview
+
+For targeted lookups mid-experiment:
 ```bash
 python research/sources/tavily_agent.py --query "<your specific question>"
 ```
@@ -113,7 +131,7 @@ Good queries:
 The output goes to stdout — read it, then proceed with implementation.
 Cost: ~$0.01/call. Budget: see TAVILY_MONTHLY_BUDGET_USD in .env.
 
-Do NOT use this for general exploration — use it for targeted questions only.
+The background orchestrator also refreshes automatically: fast sources every 2h, full refresh every 12h.
 
 ## Constraint Calculator
 Before designing an experiment, verify mathematical feasibility:
