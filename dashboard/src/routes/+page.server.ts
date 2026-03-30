@@ -1,5 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { getRecentExperiments, getRecentResearch, getBudgetSnapshot, getBestBpb, getMaxArtifactBytes } from '$lib/server/db';
+import { getRecentExperiments, getRecentResearch, getBudgetSnapshot, getBestBpb, getMaxArtifactBytes, getRecentActivity } from '$lib/server/db';
 import { getSotaBpb } from '$lib/server/kv';
 
 export const load: PageServerLoad = async ({ platform }) => {
@@ -13,18 +13,20 @@ export const load: PageServerLoad = async ({ platform }) => {
 			budget: { total_credits: 0, spent: 0, min_reserve: 0, updated_at: '' },
 			bestBpb: { local: null, runpod: null },
 			sotaBpb: null,
-			maxArtifactBytes: null
+			maxArtifactBytes: null,
+			activity: []
 		};
 	}
 
-	const [experiments, research, budget, bestBpb, sotaBpb, maxArtifactBytes] = await Promise.all([
+	const [experiments, research, budget, bestBpb, sotaBpb, maxArtifactBytes, activity] = await Promise.all([
 		getRecentExperiments(db, 10),
 		getRecentResearch(db, 10),
 		getBudgetSnapshot(db),
 		getBestBpb(db),
 		getSotaBpb(kv),
-		getMaxArtifactBytes(db)
+		getMaxArtifactBytes(db),
+		getRecentActivity(db, 30)
 	]);
 
-	return { experiments, research, budget, bestBpb, sotaBpb, maxArtifactBytes };
+	return { experiments, research, budget, bestBpb, sotaBpb, maxArtifactBytes, activity };
 };

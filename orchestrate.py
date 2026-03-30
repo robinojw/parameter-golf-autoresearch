@@ -20,6 +20,7 @@ import signal
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -29,6 +30,74 @@ load_dotenv()
 from compute.dashboard import DashboardPusher
 
 _dashboard = DashboardPusher()
+
+
+def _print_stream_line(line: str, prefix: str) -> None:
+    """Parse a stream-json line and print human-readable output."""
+    line = line.strip()
+    if not line:
+        return
+    try:
+        obj = json.loads(line)
+    except json.JSONDecodeError:
+        print(f"[{prefix}] {line}", flush=True)
+        return
+
+    msg_type = obj.get("type", "")
+
+    if msg_type == "assistant":
+        # Content blocks are nested in message.content
+        msg = obj.get("message", {})
+        content = msg.get("content", []) if isinstance(msg, dict) else []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            btype = block.get("type", "")
+            if btype == "text":
+                text = block["text"].strip()
+                if text:
+                    # Truncate very long text blocks
+                    display = text[:500] + ("..." if len(text) > 500 else "")
+                    print(f"[{prefix}] {display}", flush=True)
+                    _push_activity(prefix, "text", display)
+            elif btype == "tool_use":
+                tool_name = block.get("name", "?")
+                inp = block.get("input", {})
+                # Extract the most useful detail from the tool input
+                detail = inp.get("command", inp.get("file_path", inp.get("pattern", "")))
+                detail = str(detail)[:150]
+                print(f"[{prefix}] [{tool_name}] {detail}", flush=True)
+                _push_activity(prefix, tool_name, detail)
+
+    elif msg_type == "user":
+        # Tool results coming back
+        msg = obj.get("message", {})
+        content = msg.get("content", []) if isinstance(msg, dict) else []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                result_text = str(block.get("content", ""))[:200]
+                if result_text and "error" in result_text.lower():
+                    print(f"[{prefix}] [error] {result_text}", flush=True)
+
+    elif msg_type == "result":
+        cost = obj.get("cost_usd", 0)
+        duration = obj.get("duration_ms", 0)
+        duration_s = duration / 1000 if duration else 0
+        print(f"[{prefix}] [done] cost=${cost:.4f} duration={duration_s:.1f}s", flush=True)
+        _push_activity(prefix, "done", f"cost=${cost:.4f} duration={duration_s:.1f}s")
+
+
+def _push_activity(agent: str, action: str, detail: str) -> None:
+    """Push an activity event to the dashboard (fire-and-forget)."""
+    try:
+        _dashboard._post("activity", {
+            "agent": agent,
+            "action": action,
+            "detail": detail[:500],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -48,7 +117,7 @@ _RESEARCH_AGENT_PROMPT = Path("agents/research_agent.md")
 _PROMOTION_QUEUE = Path("promotion_queue.jsonl")
 _RESULTS_TSV = Path("results.tsv")
 
-_POLL_INTERVAL_SECONDS = 30
+_POLL_INTERVAL_SECONDS = 10
 _AGENT_HEALTH_CHECK_SECONDS = 10
 _MAX_RESTART_ATTEMPTS = 5
 _RESTART_BACKOFF_SECONDS = 5
@@ -78,26 +147,77 @@ def _launch_agent(prompt_path: Path, name: str) -> subprocess.Popen:
         sys.exit(1)
 
     prompt_content = prompt_path.read_text()
+
+    # Ensure agents use the project venv
+    venv_dir = Path(__file__).parent / ".venv"
+    venv_note = ""
+    if venv_dir.exists():
+        venv_note = (
+            f"\n\nIMPORTANT: Always use the project venv for Python: "
+            f"{venv_dir / 'bin' / 'python'}\n"
+            f"Run all python commands as: {venv_dir / 'bin' / 'python'} <script>\n"
+            f"Or activate first: source {venv_dir / 'bin' / 'activate'}\n"
+        )
+
     cmd = [
         "claude",
-        "-p", prompt_content,
-        "--output-format", "text",
+        "-p", prompt_content + venv_note,
+        "--output-format", "stream-json",
         "--verbose",
+        "--permission-mode", "bypassPermissions",
     ]
+
+    logs_dir = Path("logs")
+    logs_dir.mkdir(exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    stdout_log = logs_dir / f"{name}_{ts}_stdout.log"
+    stderr_log = logs_dir / f"{name}_{ts}_stderr.log"
+
+    stdout_fh = open(stdout_log, "w")
 
     proc = subprocess.Popen(
         cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=stdout_fh,
+        stderr=subprocess.STDOUT,  # merge stderr into stdout
         text=True,
+        bufsize=1,  # line-buffered
     )
+    proc._log_files = (stdout_fh, stdout_log)  # type: ignore[attr-defined]
     print(f"[orchestrate] Launched {name} (PID {proc.pid})")
+    print(f"[orchestrate]   log -> {stdout_log}")
+
+    # Tail the log in a background thread so output appears in this console
+    import threading
+
+    def _tail(path: Path, prefix: str):
+        """Follow a stream-json log file and print text content with a prefix."""
+        with open(path, "r") as f:
+            while proc.poll() is None:
+                line = f.readline()
+                if line:
+                    _print_stream_line(line, prefix)
+                else:
+                    time.sleep(0.1)
+            # Drain remaining lines after process exits
+            for line in f:
+                _print_stream_line(line, prefix)
+
+    t = threading.Thread(target=_tail, args=(stdout_log, name), daemon=True)
+    t.start()
+
     return proc
 
 
 def _check_agent_alive(proc: subprocess.Popen) -> bool:
     """Check if agent subprocess is still running."""
-    return proc.poll() is None
+    if proc.poll() is None:
+        return True
+    # Agent died — log exit info
+    rc = proc.returncode
+    stdout_fh, log_path = proc._log_files  # type: ignore[attr-defined]
+    stdout_fh.close()
+    print(f"[orchestrate] Agent exited with code {rc} (log: {log_path})")
+    return False
 
 
 def _terminate_agent(proc: subprocess.Popen, name: str, timeout: int = 10) -> None:
@@ -252,7 +372,6 @@ def _append_result(
         f.write(
             f"{run_id}\t{tier}\t{val_bpb}\t{artifact_bytes}\t\t{status}\tyes\t{cost:.2f}\t\t{source_item}\n"
         )
-    from datetime import datetime, timezone
     _dashboard.push_experiment({
         "id": run_id,
         "tier": tier,
@@ -376,7 +495,6 @@ def _run_supervisor() -> None:
 
         _heartbeat_counter += 1
         if _heartbeat_counter % 10 == 0:
-            from datetime import datetime, timezone
             _dashboard.push_heartbeat(
                 statuses=[
                     {

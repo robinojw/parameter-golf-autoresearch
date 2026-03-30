@@ -91,6 +91,27 @@
 		/>
 	</div>
 
+	<!-- Activity feed -->
+	<section>
+		<h2 class="text-xs font-medium tracking-wider text-muted mb-3">Activity</h2>
+		{#if data.activity.length > 0}
+			<div class="border border-edge divide-y divide-edge max-h-80 overflow-y-auto">
+				{#each data.activity as entry}
+					<div class="px-3 py-2 text-sm flex gap-3">
+						<span class="text-xs text-muted shrink-0 w-24 font-mono">
+							{new Date(entry.created_at).toLocaleTimeString()}
+						</span>
+						<span class="text-xs text-muted shrink-0 w-32">{entry.agent}</span>
+						<span class="text-xs text-muted shrink-0 w-16">{entry.action}</span>
+						<span class="text-sm truncate">{entry.detail}</span>
+					</div>
+				{/each}
+			</div>
+		{:else}
+			<p class="text-sm text-muted">No activity yet</p>
+		{/if}
+	</section>
+
 	<!-- Recent experiments -->
 	<section>
 		<h2 class="text-xs font-medium tracking-wider text-muted mb-3">Recent experiments</h2>

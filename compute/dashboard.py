@@ -19,7 +19,11 @@ class DashboardPusher:
     """
 
     def __init__(self) -> None:
-        self._url = os.environ.get("DASHBOARD_URL", "")
+        url = os.environ.get("DASHBOARD_URL", "").rstrip("/")
+        # Ensure the URL includes the /pgolf base path
+        if url and not url.endswith("/pgolf"):
+            url = url + "/pgolf"
+        self._url = url
         self._token = os.environ.get("DASHBOARD_TOKEN", "")
 
     @property

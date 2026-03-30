@@ -88,4 +88,13 @@ export type IngestEvent =
 				sota_bpb: number;
 				pipeline_counts: PipelineCounts;
 			};
+	  }
+	| {
+			event: 'activity';
+			data: {
+				agent: string;
+				action: string;
+				detail: string;
+				timestamp: string;
+			};
 	  };

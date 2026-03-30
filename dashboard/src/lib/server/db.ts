@@ -187,3 +187,19 @@ export async function getBestBpb(db: D1Database): Promise<{ local: number | null
 		.first<{ best: number | null }>();
 	return { local: local?.best ?? null, runpod: runpod?.best ?? null };
 }
+
+export interface ActivityEntry {
+	id: number;
+	agent: string;
+	action: string;
+	detail: string;
+	created_at: string;
+}
+
+export async function getRecentActivity(db: D1Database, limit = 30): Promise<ActivityEntry[]> {
+	const { results } = await db
+		.prepare('SELECT * FROM activity_log ORDER BY id DESC LIMIT ?')
+		.bind(limit)
+		.all();
+	return results as unknown as ActivityEntry[];
+}

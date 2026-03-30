@@ -25,6 +25,7 @@ raw_cache.jsonl
 graded_cache.jsonl
 extract_cache.jsonl
 runpod_results/
+logs/
 *.log
 
 # Docs (specs, plans — local only)

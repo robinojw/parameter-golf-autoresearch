@@ -9,8 +9,13 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 	}
 
 	const body = (await request.json()) as IngestEvent;
-	const db = platform!.env.DB;
-	const kv = platform!.env.KV;
+	const db = platform?.env?.DB;
+	const kv = platform?.env?.KV;
+
+	if (!db || !kv) {
+		console.error('D1/KV bindings missing. platform.env keys:', Object.keys(platform?.env ?? {}));
+		return json({ error: 'Storage bindings not configured' }, { status: 503 });
+	}
 
 	switch (body.event) {
 		case 'experiment_complete': {
@@ -126,6 +131,23 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 			await kv.put('meta:sota_bpb', String(sota_bpb));
 			await kv.put('meta:pipeline_counts', JSON.stringify(pipeline_counts));
 			await kv.put('meta:last_push', new Date().toISOString());
+			break;
+		}
+
+		case 'activity': {
+			const { agent, action, detail, timestamp } = body.data;
+			await db
+				.prepare(
+					'INSERT INTO activity_log (agent, action, detail, created_at) VALUES (?, ?, ?, ?)'
+				)
+				.bind(agent, action, detail?.slice(0, 500) ?? '', timestamp)
+				.run();
+			// Trim old entries — keep last 200
+			await db
+				.prepare(
+					'DELETE FROM activity_log WHERE id NOT IN (SELECT id FROM activity_log ORDER BY id DESC LIMIT 200)'
+				)
+				.run();
 			break;
 		}
 

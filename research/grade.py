@@ -175,7 +175,7 @@ def _run_opencode(prompt: str) -> str:
 
 def _run_claude(prompt: str) -> str:
     result = subprocess.run(
-        [HARNESS_CLAUDE, "-p", prompt, "--output-format", _KEY_JSON, "--bare"],
+        [HARNESS_CLAUDE, "-p", prompt, "--output-format", _KEY_JSON],
         capture_output=True,
         text=True,
         timeout=SUBPROCESS_TIMEOUT_SECONDS,
