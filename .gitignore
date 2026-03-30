@@ -30,8 +30,10 @@ runpod_results/
 # Docs (specs, plans — local only)
 docs/
 
+# Dash
+./dashboard/wrangler.jsonc
+
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo

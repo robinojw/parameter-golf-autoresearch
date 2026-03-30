@@ -69,6 +69,9 @@ def inject_into_program_md(
     inject_strategy_section(program_md_path)
     inject_technique_map_section(program_md_path)
 
+    from compute.dashboard import DashboardPusher
+    DashboardPusher().push_doc("program", program_path.read_text())
+
 
 def inject_experiments_section(program_md_path: str = "program.md") -> None:
     program_path = Path(program_md_path)

@@ -102,6 +102,8 @@ def _load_verified_ids() -> set[str]:
 def _append_verified(item: VerifiedItem) -> None:
     with VERIFIED_CACHE_PATH.open("a", encoding=_ENCODING) as f:
         f.write(json.dumps(asdict(item)) + _NEWLINE)
+    from compute.dashboard import DashboardPusher
+    DashboardPusher().push_verified(item.id, item.verified_at)
 
 
 _TITLE_STRIP_PATTERNS = [

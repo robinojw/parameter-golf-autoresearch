@@ -111,6 +111,8 @@ class BudgetManager:
             _KEY_RUNS: self.runs,
         }
         BUDGET_FILE.write_text(json.dumps(data, indent=_COST_ROUND_DIGITS))
+        from compute.dashboard import DashboardPusher
+        DashboardPusher().push_budget(data)
 
     def _load(self) -> None:
         data = json.loads(BUDGET_FILE.read_text())

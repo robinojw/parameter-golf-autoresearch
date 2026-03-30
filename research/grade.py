@@ -395,3 +395,5 @@ def _append_graded(items: list[GradedItem]) -> None:
     with open(GRADED_CACHE_PATH, "a") as f:
         for item in items:
             f.write(json.dumps(asdict(item)) + _NEWLINE)
+    from compute.dashboard import DashboardPusher
+    DashboardPusher().push_research([asdict(item) for item in items])

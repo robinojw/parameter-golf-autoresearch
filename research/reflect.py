@@ -235,6 +235,8 @@ def _write_strategy_md(
     final_content = frontmatter + body_text + "\n"
 
     strategy_path.write_text(final_content)
+    from compute.dashboard import DashboardPusher
+    DashboardPusher().push_doc("strategy", final_content)
 
 
 def _read_strategy_md(strategy_path: Path = STRATEGY_PATH) -> str:
@@ -293,6 +295,8 @@ def bootstrap_technique_map(technique_map_path: Path = TECHNIQUE_MAP_PATH) -> di
 
     data: dict = {"nodes": nodes, "edges": []}
     technique_map_path.write_text(json.dumps(data, indent=2))
+    from compute.dashboard import DashboardPusher
+    DashboardPusher().push_doc("technique_map", json.dumps(data, indent=2))
     return data
 
 
@@ -343,6 +347,8 @@ def merge_technique_updates(
                 existing_edge_pairs.add(pair)
 
     technique_map_path.write_text(json.dumps(data, indent=2))
+    from compute.dashboard import DashboardPusher
+    DashboardPusher().push_doc("technique_map", json.dumps(data, indent=2))
     return data
 
 

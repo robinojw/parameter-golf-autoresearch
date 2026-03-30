@@ -26,6 +26,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from compute.dashboard import DashboardPusher
+
+_dashboard = DashboardPusher()
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -248,6 +252,20 @@ def _append_result(
         f.write(
             f"{run_id}\t{tier}\t{val_bpb}\t{artifact_bytes}\t\t{status}\tyes\t{cost:.2f}\t\t{source_item}\n"
         )
+    from datetime import datetime, timezone
+    _dashboard.push_experiment({
+        "id": run_id,
+        "tier": tier,
+        "val_bpb": result.get(_KEY_VAL_BPB),
+        "artifact_bytes": result.get(_KEY_ARTIFACT_BYTES),
+        "memory_gb": None,
+        "status": status,
+        "promoted": tier == "runpod",
+        "cost_usd": cost,
+        "description": "",
+        "source_item": source_item,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
 
 
 def print_budget_status() -> None:
@@ -281,6 +299,36 @@ def promote_to_runpod(commit_hash: str, dry_run: bool = False) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _read_sota_bpb() -> float:
+    """Read current SOTA bpb from program.md or return 0."""
+    try:
+        text = Path("program.md").read_text()
+        for line in text.splitlines():
+            if "sota" in line.lower() and "bpb" in line.lower():
+                import re
+                match = re.search(r"(\d+\.\d+)", line)
+                if match:
+                    return float(match.group(1))
+    except Exception:
+        pass
+    return 0.0
+
+
+def _read_pipeline_counts() -> dict:
+    """Count lines in each pipeline cache file."""
+    def _count_lines(path: str) -> int:
+        try:
+            return sum(1 for _ in open(path))
+        except FileNotFoundError:
+            return 0
+    return {
+        "fetched": _count_lines("raw_cache.jsonl"),
+        "graded": _count_lines("graded_cache.jsonl"),
+        "verified": _count_lines("verified_cache.jsonl"),
+        "injected": _count_lines("research_results.jsonl"),
+    }
+
+
 def _run_supervisor() -> None:
     """Main loop: spawn agents, monitor health, poll promotion queue."""
     experiment_proc = _launch_agent(_EXPERIMENT_AGENT_PROMPT, "experiment-agent")
@@ -301,6 +349,8 @@ def _run_supervisor() -> None:
 
     print("[orchestrate] Supervisor running. Polling promotion queue every "
           f"{_POLL_INTERVAL_SECONDS}s.")
+
+    _heartbeat_counter = 0
 
     while True:
         # Health check: restart crashed agents
@@ -323,6 +373,28 @@ def _run_supervisor() -> None:
             else:
                 print("[orchestrate] Research agent exceeded max restarts. Stopping.")
                 _cleanup()
+
+        _heartbeat_counter += 1
+        if _heartbeat_counter % 10 == 0:
+            from datetime import datetime, timezone
+            _dashboard.push_heartbeat(
+                statuses=[
+                    {
+                        "agent": "experiment",
+                        "status": "running" if _check_agent_alive(experiment_proc) else "crashed",
+                        "last_activity": datetime.now(timezone.utc).isoformat(),
+                        "restart_count": experiment_restarts,
+                    },
+                    {
+                        "agent": "research",
+                        "status": "running" if _check_agent_alive(research_proc) else "crashed",
+                        "last_activity": datetime.now(timezone.utc).isoformat(),
+                        "restart_count": research_restarts,
+                    },
+                ],
+                sota_bpb=_read_sota_bpb(),
+                pipeline_counts=_read_pipeline_counts(),
+            )
 
         # Poll promotion queue
         promotions = _read_pending_promotions()
