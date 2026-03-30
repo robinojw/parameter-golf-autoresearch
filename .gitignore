@@ -27,6 +27,9 @@ extract_cache.jsonl
 runpod_results/
 *.log
 
+# Docs (specs, plans — local only)
+docs/
+
 # IDE
 .vscode/
 .idea/

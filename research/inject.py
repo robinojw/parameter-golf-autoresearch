@@ -1,6 +1,7 @@
 import json
 import re
 from pathlib import Path
+from typing import Union
 
 from research.experiments import (
     get_competitor_scores,
@@ -289,6 +290,28 @@ def inject_technique_map_section(program_md_path: str = "program.md") -> None:
         flags=re.DOTALL,
     )
     program_path.write_text(new_content)
+
+
+def append_to_research_results(
+    message: str,
+    priority: str = "normal",
+    source_experiment: str = "",
+    results_path: Union[Path, str] = "research_results.jsonl",
+) -> None:
+    """Append a research finding to research_results.jsonl.
+
+    Used by the research agent to signal fresh findings to the experiment agent.
+    The experiment agent checks this file's timestamps to know if new research
+    is available since its last read.
+    """
+    from agents.shared import Message, append_message
+
+    msg = Message(
+        message=message,
+        priority=priority,
+        source_experiment=source_experiment,
+    )
+    append_message(Path(results_path), msg)
 
 
 def _load_graded_sorted(graded_cache_path: str) -> list[dict]:

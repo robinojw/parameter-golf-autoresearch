@@ -151,3 +151,25 @@ class TestFeasibilityReport:
         report = feasibility_report(params=20_000_000, bits=6)
         assert "compression_ratio" in report
         assert 0 < report["compression_ratio"] <= 1.0
+
+
+class TestMemoryFootprint:
+    def test_small_model_fits(self):
+        from compute.constraints import memory_footprint_check
+        result = memory_footprint_check(
+            params=20_000_000, bits=6, batch_size=64, seq_len=512
+        )
+        assert result["status"] == "pass"
+
+    def test_huge_model_fails(self):
+        from compute.constraints import memory_footprint_check
+        result = memory_footprint_check(
+            params=50_000_000_000, bits=16, batch_size=256, seq_len=2048
+        )
+        assert result["status"] == "fail"
+
+    def test_included_in_feasibility_report(self):
+        from compute.constraints import feasibility_report
+        report = feasibility_report(params=20_000_000, bits=6)
+        assert "memory_footprint" in report["checks"]
+        assert report["checks"]["memory_footprint"]["status"] == "pass"

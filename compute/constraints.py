@@ -181,6 +181,45 @@ _STATUS_PASS = "pass"
 _STATUS_WARN = "warn"
 _STATUS_FAIL = "fail"
 
+# H100 SXM5 has 80GB HBM3
+H100_VRAM_BYTES = 80 * 1024 * 1024 * 1024  # 80 GB
+
+
+def memory_footprint_check(
+    params: int,
+    bits: int,
+    batch_size: int = 64,
+    seq_len: int = 512,
+    gpu_count: int = GPU_COUNT,
+) -> dict:
+    """Estimate GPU memory footprint and check against H100 VRAM."""
+    weight_bytes = (params * bits) / 8
+    optimizer_bytes = params * 4 * 2  # Adam: momentum + variance in fp32
+    gradient_bytes = params * 4  # fp32 gradients
+    batch_per_gpu = batch_size / gpu_count
+    activation_bytes = 20 * batch_per_gpu * seq_len * math.sqrt(params)
+
+    total_per_gpu = weight_bytes + optimizer_bytes + gradient_bytes + activation_bytes
+
+    if total_per_gpu > H100_VRAM_BYTES:
+        status = _STATUS_FAIL
+    elif total_per_gpu > H100_VRAM_BYTES * 0.85:
+        status = _STATUS_WARN
+    else:
+        status = _STATUS_PASS
+
+    return {
+        "status": status,
+        "value": int(total_per_gpu),
+        "limit": H100_VRAM_BYTES,
+        "headroom_gb": (H100_VRAM_BYTES - total_per_gpu) / (1024**3),
+        "detail": f"~{total_per_gpu / (1024**3):.1f} GB per GPU "
+                  f"(weights={weight_bytes/(1024**3):.2f}GB, "
+                  f"optim={optimizer_bytes/(1024**3):.2f}GB, "
+                  f"grad={gradient_bytes/(1024**3):.2f}GB, "
+                  f"act={activation_bytes/(1024**3):.2f}GB)",
+    }
+
 
 def feasibility_report(
     params: int,
@@ -245,7 +284,10 @@ def feasibility_report(
         "detail": f"Entropy floor {entropy_bytes:,} bytes ({bits}-bit, {params:,} params)",
     }
 
-    # 5. Max parameters at this bit-width
+    # 5. Memory footprint
+    mem_check = memory_footprint_check(params, bits, batch_size, seq_len)
+
+    # 6. Max parameters at this bit-width
     max_params = max_parameters(bits, ARTIFACT_SOFT_LIMIT, code_bytes, compression)
 
     checks = {
@@ -253,6 +295,7 @@ def feasibility_report(
         "training_steps": steps_check,
         "quantization_mse": mse_check,
         "entropy_bound": entropy_check,
+        "memory_footprint": mem_check,
     }
 
     feasible = all(c["status"] != _STATUS_FAIL for c in checks.values())

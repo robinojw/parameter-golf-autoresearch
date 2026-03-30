@@ -1,12 +1,34 @@
+"""Parameter Golf Autoresearch — Process Supervisor.
+
+Thin orchestrator that spawns two Claude Code (Opus 4.6) agents as subprocesses:
+  1. Experiment agent — designs hypotheses, runs local experiments, requests promotions
+  2. Research agent — continuously discovers, grades, and synthesizes research
+
+Also owns RunPod instance lifecycle (create/delete via API, execute via SSH)
+and polls promotion_queue.jsonl for Tier 2 promotion requests.
+
+No LLM logic lives here — all intelligence is in the agents.
+"""
+
+from __future__ import annotations
+
 import argparse
-import asyncio
+import atexit
+import json
 import os
+import signal
+import subprocess
+import sys
 import time
-import threading
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
 
 _ENV_TOTAL_CREDITS = "TOTAL_COMPUTE_CREDITS"
 _ENV_MIN_RESERVE = "RUNPOD_MIN_RESERVE"
@@ -15,109 +37,137 @@ _DEFAULT_RESERVE = "50"
 _KEY_VAL_BPB = "val_bpb"
 _KEY_ARTIFACT_BYTES = "artifact_bytes"
 _COMMIT_SHORT_LEN = 7
-_LOW_BUDGET_FACTOR = 2
-_DEFAULT_REFRESH_HOURS = 6
-_DEFAULT_FAST_REFRESH_HOURS = 2
-_DEFAULT_SLOW_REFRESH_HOURS = 12
-_DEFAULT_TOP_N = 12
-_SECONDS_PER_HOUR = 3600
-_BREAKING_NEWS_INTERVAL_HOURS = 1
 _LOG_KEYS = (_KEY_VAL_BPB, "val_loss", _KEY_ARTIFACT_BYTES, "training_seconds")
+
+_EXPERIMENT_AGENT_PROMPT = Path("agents/experiment_agent.md")
+_RESEARCH_AGENT_PROMPT = Path("agents/research_agent.md")
+_PROMOTION_QUEUE = Path("promotion_queue.jsonl")
+_RESULTS_TSV = Path("results.tsv")
+
+_POLL_INTERVAL_SECONDS = 30
+_AGENT_HEALTH_CHECK_SECONDS = 10
+_MAX_RESTART_ATTEMPTS = 5
+_RESTART_BACKOFF_SECONDS = 5
+
+# ---------------------------------------------------------------------------
+# Budget
+# ---------------------------------------------------------------------------
 
 
 def _make_budget_manager():
     from compute.budget import BudgetManager
-
     return BudgetManager(
         total_credits=float(os.getenv(_ENV_TOTAL_CREDITS, _DEFAULT_CREDITS)),
         min_reserve=float(os.getenv(_ENV_MIN_RESERVE, _DEFAULT_RESERVE)),
     )
 
 
-async def refresh_research(since_hours: int, top_n: int) -> None:
-    """Full refresh: all sources + grade + verify + reflect + inject."""
-    from research.fetch import fetch_all
-    from research.grade import grade_items, _load_graded_ids
-    from research.inject import inject_into_program_md
-    from research.verify import run_verification_cycle
+# ---------------------------------------------------------------------------
+# Agent process management
+# ---------------------------------------------------------------------------
 
-    new_items = await fetch_all(since_hours=since_hours)
-    already_graded = _load_graded_ids()
-    ungraded = [i for i in new_items if i.id not in already_graded]
-    if ungraded:
-        grade_items(ungraded)
-    verified = await run_verification_cycle()
-    verified_count = len(verified)
-    inject_into_program_md(top_n=top_n)
-    from research.reflect import run_reflection_cycle, bootstrap_technique_map
 
-    bootstrap_technique_map()
-    reflection = await run_reflection_cycle()
-    reflection_msg = "reflected" if reflection else "skipped reflection"
-    print(
-        f"[research] {len(ungraded)} new items graded, "
-        f"{verified_count} verified, {reflection_msg}. program.md updated."
+def _launch_agent(prompt_path: Path, name: str) -> subprocess.Popen:
+    """Launch a Claude Code instance with the given system prompt."""
+    if not prompt_path.exists():
+        print(f"[orchestrate] ERROR: {prompt_path} not found")
+        sys.exit(1)
+
+    prompt_content = prompt_path.read_text()
+    cmd = [
+        "claude",
+        "-p", prompt_content,
+        "--output-format", "text",
+        "--verbose",
+    ]
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
     )
+    print(f"[orchestrate] Launched {name} (PID {proc.pid})")
+    return proc
 
 
-async def refresh_fast_sources(since_hours: int, top_n: int) -> None:
-    """Fast refresh: GitHub + Tavily only, then grade + inject. No verify/reflect."""
-    from research.fetch import fetch_fast
-    from research.grade import grade_items, _load_graded_ids
-    from research.inject import inject_into_program_md
-
-    new_items = await fetch_fast(since_hours=since_hours)
-    already_graded = _load_graded_ids()
-    ungraded = [i for i in new_items if i.id not in already_graded]
-    if ungraded:
-        grade_items(ungraded)
-    inject_into_program_md(top_n=top_n)
-    print(f"[research:fast] {len(ungraded)} new items graded. program.md updated.")
+def _check_agent_alive(proc: subprocess.Popen) -> bool:
+    """Check if agent subprocess is still running."""
+    return proc.poll() is None
 
 
-def _check_low_budget(remaining: float, min_reserve: float) -> bool:
-    if remaining >= min_reserve * _LOW_BUDGET_FACTOR:
-        return True
-    confirm = input(
-        f"[budget] WARNING: only ${remaining:.2f} remaining. Submit? [y/N] "
-    )
-    return confirm.lower() == "y"
+def _terminate_agent(proc: subprocess.Popen, name: str, timeout: int = 10) -> None:
+    """Gracefully terminate an agent, then force kill if needed."""
+    if proc.poll() is not None:
+        return
+    print(f"[orchestrate] Terminating {name} (PID {proc.pid})...")
+    proc.terminate()
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        print(f"[orchestrate] Force killing {name} (PID {proc.pid})")
+        proc.kill()
+        proc.wait()
 
 
-def promote_to_runpod(commit_hash: str, dry_run: bool = False) -> None:
+# ---------------------------------------------------------------------------
+# RunPod promotion handling
+# ---------------------------------------------------------------------------
+
+
+def _read_pending_promotions() -> list[dict]:
+    """Read unprocessed promotion requests from the queue."""
+    if not _PROMOTION_QUEUE.exists():
+        return []
+    requests = []
+    with open(_PROMOTION_QUEUE, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                requests.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return requests
+
+
+def _clear_promotion_queue() -> None:
+    """Clear the promotion queue after processing."""
+    if _PROMOTION_QUEUE.exists():
+        _PROMOTION_QUEUE.write_text("")
+
+
+def _handle_promotion(request: dict) -> None:
+    """Process a single promotion request: budget check, threshold, launch RunPod."""
     from compute.runpod_client import RunPodClient
     from compute import sync
+    from compute.threshold import compute_promotion_threshold, check_adaptive_fallback
+    from research.experiments import get_current_best_bpb
 
+    commit_hash = request.get("source_experiment", "unknown")
+    message = request.get("message", "")
+    print(f"[orchestrate] Processing promotion: {commit_hash} — {message[:80]}")
+
+    # 1. Budget check
     budget = _make_budget_manager()
-
     allowed, reason = budget.can_submit()
     if not allowed:
-        print(f"[budget] BLOCKED: {reason}")
+        print(f"[orchestrate] BLOCKED by budget: {reason}")
         return
 
-    remaining = budget.status()["remaining"]
-    if not _check_low_budget(remaining, budget.min_reserve):
-        return
-
-    # Threshold check
-    from compute.threshold import compute_promotion_threshold, check_adaptive_fallback
-    from research.experiments import get_current_best_bpb, _read_rows
-
+    # 2. Threshold check
     current_bpb = get_current_best_bpb()
     threshold = compute_promotion_threshold(current_bpb, sota=current_bpb)
 
-    rows = _read_rows()
-    candidate_row = None
-    for row in reversed(rows):
-        if row.commit.startswith(commit_hash[:_COMMIT_SHORT_LEN]):
-            candidate_row = row
-            break
-
-    if candidate_row and candidate_row.val_bpb > 0:
-        candidate_bpb = candidate_row.val_bpb
-        passes_threshold = candidate_bpb < current_bpb * threshold
-
-        if not passes_threshold:
+    candidate_bpb = request.get("candidate_bpb")
+    if candidate_bpb is not None:
+        candidate_bpb = float(candidate_bpb)
+        required_bpb = current_bpb * threshold
+        if candidate_bpb >= required_bpb:
+            # Try adaptive fallback
+            from research.experiments import _read_rows
+            rows = _read_rows()
             fallback_window = int(os.getenv("PROMOTION_FALLBACK_WINDOW", "10"))
             row_dicts = [
                 {"tier": r.tier, "status": r.status, "val_bpb": r.val_bpb}
@@ -127,19 +177,12 @@ def promote_to_runpod(commit_hash: str, dry_run: bool = False) -> None:
                 row_dicts, current_bpb, threshold, window=fallback_window
             )
             if relaxed and candidate_bpb < current_bpb * relaxed:
-                print(f"[threshold] Adaptive fallback: accepting {candidate_bpb:.4f} "
-                      f"(relaxed threshold {relaxed:.4f})")
+                print(f"[orchestrate] Adaptive fallback: accepting {candidate_bpb:.4f}")
             else:
-                required_bpb = current_bpb * threshold
-                print(f"[threshold] BLOCKED: candidate val_bpb={candidate_bpb:.4f} "
-                      f"does not meet threshold {required_bpb:.4f} "
-                      f"(current={current_bpb:.4f}, required improvement={1-threshold:.2%})")
+                print(f"[orchestrate] BLOCKED by threshold: {candidate_bpb:.4f} >= {required_bpb:.4f}")
                 return
 
-    if dry_run:
-        print("[dry-run] Would submit to RunPod. No credits spent.")
-        return
-
+    # 3. Launch RunPod
     run_id = f"runpod_{commit_hash[:_COMMIT_SHORT_LEN]}_{time.strftime('%m%d%H%M')}"
     client = RunPodClient(
         api_key=os.environ["RUNPOD_API_KEY"],
@@ -158,15 +201,20 @@ def promote_to_runpod(commit_hash: str, dry_run: bool = False) -> None:
         client.terminate_pod(pod_id)
 
     if exit_code != 0:
-        print(f"[runpod] Training failed with exit code {exit_code}")
+        print(f"[orchestrate] Training failed with exit code {exit_code}")
+        cost = budget.record_run(run_id, duration)
+        _append_result(run_id, "runpod", {}, cost, status="crash")
         return
 
     result = parse_run_log("runpod_results/run.log")
     cost = budget.record_run(run_id, duration)
-    append_to_results_tsv(run_id, "runpod", result, cost)
-    print(
-        f"[runpod] Done. val_bpb={result.get(_KEY_VAL_BPB)} artifact={result.get(_KEY_ARTIFACT_BYTES)} cost=${cost:.2f}"
-    )
+    _append_result(run_id, "runpod", result, cost)
+    print(f"[orchestrate] Done. val_bpb={result.get(_KEY_VAL_BPB)} cost=${cost:.2f}")
+
+
+# ---------------------------------------------------------------------------
+# Results & logging
+# ---------------------------------------------------------------------------
 
 
 def parse_run_log(log_path: str) -> dict:
@@ -186,19 +234,19 @@ def parse_run_log(log_path: str) -> dict:
     return result
 
 
-def append_to_results_tsv(
-    run_id: str, tier: str, result: dict, cost: float, source_item: str = ""
+def _append_result(
+    run_id: str, tier: str, result: dict, cost: float,
+    status: str = "keep", source_item: str = "",
 ) -> None:
-    path = Path("results.tsv")
-    if not path.exists():
-        path.write_text(
+    if not _RESULTS_TSV.exists():
+        _RESULTS_TSV.write_text(
             "commit\ttier\tval_bpb\tartifact_bytes\tmemory_gb\tstatus\tpromoted\tcost_usd\tdescription\tsource_item\n"
         )
-    with open(path, "a") as f:
+    with open(_RESULTS_TSV, "a") as f:
         val_bpb = result.get(_KEY_VAL_BPB, "")
         artifact_bytes = result.get(_KEY_ARTIFACT_BYTES, "")
         f.write(
-            f"{run_id}\t{tier}\t{val_bpb}\t{artifact_bytes}\t\tkeep\tyes\t{cost:.2f}\t\t{source_item}\n"
+            f"{run_id}\t{tier}\t{val_bpb}\t{artifact_bytes}\t\t{status}\tyes\t{cost:.2f}\t\t{source_item}\n"
         )
 
 
@@ -212,54 +260,102 @@ def print_budget_status() -> None:
             print(f"  {key}: {value}")
 
 
-async def _run_breaking_news() -> None:
-    from research.sources.tavily_breakingnews import fetch_tavily_breaking
-    from research.fetch import _append_to_cache, _load_existing_ids
-
-    try:
-        items = await fetch_tavily_breaking()
-        existing = _load_existing_ids()
-        new_items = [i for i in items if i.id not in existing]
-        if new_items:
-            _append_to_cache(new_items)
-            print(f"[breaking] {len(new_items)} new items cached.")
-    except Exception as exc:
-        print(f"[breaking] failed: {exc}")
+# ---------------------------------------------------------------------------
+# Legacy CLI commands (preserved for direct use)
+# ---------------------------------------------------------------------------
 
 
-def _breaking_news_loop() -> None:
-    while True:
-        asyncio.run(_run_breaking_news())
-        time.sleep(_BREAKING_NEWS_INTERVAL_HOURS * _SECONDS_PER_HOUR)
-
-
-_BOOL_TRUE = "true"
-
-
-def _start_breaking_news_thread() -> None:
-    breaking_enabled = (
-        os.getenv("TAVILY_HOURLY_BREAKING_NEWS", _BOOL_TRUE).lower() == _BOOL_TRUE
-    )
-    tavily_key_set = bool(os.environ.get("TAVILY_API_KEY"))
-    should_start = breaking_enabled and tavily_key_set
-    if not should_start:
+def promote_to_runpod(commit_hash: str, dry_run: bool = False) -> None:
+    """Direct promotion (bypass queue). Kept for manual --promote usage."""
+    if dry_run:
+        print("[dry-run] Would submit to RunPod. No credits spent.")
         return
-    thread = threading.Thread(target=_breaking_news_loop, daemon=True)
-    thread.start()
-    print("[orchestrate] Breaking news thread started (hourly)")
+    _handle_promotion({
+        "source_experiment": commit_hash,
+        "message": f"Manual promotion of {commit_hash}",
+    })
+
+
+# ---------------------------------------------------------------------------
+# Main supervisor loop
+# ---------------------------------------------------------------------------
+
+
+def _run_supervisor() -> None:
+    """Main loop: spawn agents, monitor health, poll promotion queue."""
+    experiment_proc = _launch_agent(_EXPERIMENT_AGENT_PROMPT, "experiment-agent")
+    research_proc = _launch_agent(_RESEARCH_AGENT_PROMPT, "research-agent")
+
+    experiment_restarts = 0
+    research_restarts = 0
+
+    def _cleanup(signum=None, frame=None):
+        print("\n[orchestrate] Shutting down...")
+        _terminate_agent(experiment_proc, "experiment-agent")
+        _terminate_agent(research_proc, "research-agent")
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _cleanup)
+    signal.signal(signal.SIGINT, _cleanup)
+    atexit.register(lambda: _cleanup())
+
+    print("[orchestrate] Supervisor running. Polling promotion queue every "
+          f"{_POLL_INTERVAL_SECONDS}s.")
+
+    while True:
+        # Health check: restart crashed agents
+        if not _check_agent_alive(experiment_proc):
+            experiment_restarts += 1
+            if experiment_restarts <= _MAX_RESTART_ATTEMPTS:
+                print(f"[orchestrate] Experiment agent died. Restarting ({experiment_restarts}/{_MAX_RESTART_ATTEMPTS})...")
+                time.sleep(_RESTART_BACKOFF_SECONDS)
+                experiment_proc = _launch_agent(_EXPERIMENT_AGENT_PROMPT, "experiment-agent")
+            else:
+                print("[orchestrate] Experiment agent exceeded max restarts. Stopping.")
+                _cleanup()
+
+        if not _check_agent_alive(research_proc):
+            research_restarts += 1
+            if research_restarts <= _MAX_RESTART_ATTEMPTS:
+                print(f"[orchestrate] Research agent died. Restarting ({research_restarts}/{_MAX_RESTART_ATTEMPTS})...")
+                time.sleep(_RESTART_BACKOFF_SECONDS)
+                research_proc = _launch_agent(_RESEARCH_AGENT_PROMPT, "research-agent")
+            else:
+                print("[orchestrate] Research agent exceeded max restarts. Stopping.")
+                _cleanup()
+
+        # Poll promotion queue
+        promotions = _read_pending_promotions()
+        if promotions:
+            _clear_promotion_queue()
+            for req in promotions:
+                try:
+                    _handle_promotion(req)
+                except Exception as exc:
+                    print(f"[orchestrate] Promotion failed: {exc}")
+
+        time.sleep(_POLL_INTERVAL_SECONDS)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Parameter Golf Autoresearch Orchestrator"
+        description="Parameter Golf Autoresearch — Process Supervisor"
     )
     parser.add_argument("--run-tag", type=str, help="Tag for this run session")
-    parser.add_argument("--refresh-hours", type=int, default=_DEFAULT_REFRESH_HOURS)
-    parser.add_argument("--top-n", type=int, default=_DEFAULT_TOP_N)
-    parser.add_argument("--promote", type=str, metavar="COMMIT_HASH")
     _store_true = "store_true"
-    parser.add_argument("--budget-status", action=_store_true)
+
+    # Direct commands (no agent needed)
+    parser.add_argument("--promote", type=str, metavar="COMMIT_HASH",
+                        help="Manually promote a commit to RunPod")
     parser.add_argument("--dry-run", action=_store_true)
+    parser.add_argument("--budget-status", action=_store_true)
+    parser.add_argument("--threshold-status", action=_store_true)
+    parser.add_argument("--check-constraints", action=_store_true)
     parser.add_argument("--critique", action=_store_true)
     parser.add_argument("--tournament", action=_store_true)
     parser.add_argument("--tournament-prompt", type=str, default="")
@@ -270,21 +366,20 @@ def main() -> None:
     parser.add_argument("--parallel", type=int, default=1)
     parser.add_argument("--cooldown", type=int, default=3)
     parser.add_argument("--auto-promote", action=_store_true)
-    parser.add_argument("--threshold-status", action=_store_true)
-    parser.add_argument("--refresh", action=_store_true,
-                        help="Run a full research refresh now (all sources)")
-    parser.add_argument("--refresh-fast", action=_store_true,
-                        help="Run a fast refresh (GitHub + Tavily only)")
-    parser.add_argument("--fast-refresh-hours", type=int,
-                        default=_DEFAULT_FAST_REFRESH_HOURS)
-    parser.add_argument("--slow-refresh-hours", type=int,
-                        default=_DEFAULT_SLOW_REFRESH_HOURS)
-    parser.add_argument("--check-constraints", action=_store_true)
     parser.add_argument("--params", type=int, default=20_000_000)
     parser.add_argument("--bits", type=int, default=6)
     parser.add_argument("--code-bytes", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--seq-len", type=int, default=512)
+
+    # Research commands (still useful for manual runs)
+    parser.add_argument("--refresh", action=_store_true,
+                        help="Run a full research refresh (all sources)")
+    parser.add_argument("--refresh-fast", action=_store_true,
+                        help="Run a fast refresh (GitHub + Tavily)")
+    parser.add_argument("--refresh-hours", type=int, default=6)
+    parser.add_argument("--top-n", type=int, default=12)
+
     args = parser.parse_args()
 
     if args.budget_status:
@@ -310,7 +405,7 @@ def main() -> None:
         winner = result.get("winner")
         if winner and args.auto_promote and winner.get("val_bpb"):
             print("[tournament] Auto-promote: checking threshold...")
-            append_to_results_tsv(
+            _append_result(
                 f"tournament_{winner['name']}",
                 "tournament_final",
                 {"val_bpb": winner["val_bpb"]},
@@ -336,40 +431,49 @@ def main() -> None:
         )
         print_report(report)
     elif args.refresh:
+        import asyncio
         since_hours = int(os.getenv("SINCE_HOURS", "48"))
-        asyncio.run(refresh_research(since_hours, args.top_n))
+
+        async def _do_refresh():
+            from research.fetch import fetch_all
+            from research.grade import grade_items, _load_graded_ids
+            from research.inject import inject_into_program_md
+            from research.verify import run_verification_cycle
+            from research.reflect import run_reflection_cycle, bootstrap_technique_map
+
+            new_items = await fetch_all(since_hours=since_hours)
+            already_graded = _load_graded_ids()
+            ungraded = [i for i in new_items if i.id not in already_graded]
+            if ungraded:
+                grade_items(ungraded)
+            await run_verification_cycle()
+            inject_into_program_md(top_n=args.top_n)
+            bootstrap_technique_map()
+            await run_reflection_cycle()
+            print(f"[refresh] Done. {len(ungraded)} new items graded.")
+
+        asyncio.run(_do_refresh())
     elif args.refresh_fast:
+        import asyncio
         since_hours = int(os.getenv("SINCE_HOURS", "48"))
-        asyncio.run(refresh_fast_sources(since_hours, args.top_n))
+
+        async def _do_fast():
+            from research.fetch import fetch_fast
+            from research.grade import grade_items, _load_graded_ids
+            from research.inject import inject_into_program_md
+
+            new_items = await fetch_fast(since_hours=since_hours)
+            already_graded = _load_graded_ids()
+            ungraded = [i for i in new_items if i.id not in already_graded]
+            if ungraded:
+                grade_items(ungraded)
+            inject_into_program_md(top_n=args.top_n)
+            print(f"[refresh:fast] Done. {len(ungraded)} new items graded.")
+
+        asyncio.run(_do_fast())
     else:
-        since_hours = int(os.getenv("SINCE_HOURS", "48"))
-
-        _start_breaking_news_thread()
-
-        # Tiered refresh loop:
-        # - Fast sources (GitHub, Tavily) every fast_refresh_hours (default 2h)
-        # - Full refresh (all sources + verify + reflect) every slow_refresh_hours (default 12h)
-        fast_interval = args.fast_refresh_hours * _SECONDS_PER_HOUR
-        slow_interval = args.slow_refresh_hours * _SECONDS_PER_HOUR
-        last_slow = 0.0  # force full refresh on first iteration
-
-        while True:
-            now = time.time()
-            time_since_slow = now - last_slow
-
-            if time_since_slow >= slow_interval:
-                print("[orchestrate] Running full refresh (all sources)...")
-                asyncio.run(refresh_research(since_hours, args.top_n))
-                last_slow = time.time()
-            else:
-                print("[orchestrate] Running fast refresh (GitHub + Tavily)...")
-                asyncio.run(refresh_fast_sources(since_hours, args.top_n))
-
-            next_slow_in = slow_interval - (time.time() - last_slow)
-            sleep_time = min(fast_interval, next_slow_in)
-            print(f"[orchestrate] Next fast refresh in {sleep_time / _SECONDS_PER_HOUR:.1f}h, "
-                  f"next full refresh in {next_slow_in / _SECONDS_PER_HOUR:.1f}h")
-            time.sleep(sleep_time)
+        # Default: run the supervisor
+        _run_supervisor()
 
 
 if __name__ == "__main__":
