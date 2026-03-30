@@ -209,14 +209,18 @@ def _launch_agent(prompt_path: Path, name: str) -> subprocess.Popen:
 
 
 def _check_agent_alive(proc: subprocess.Popen) -> bool:
-    """Check if agent subprocess is still running."""
+    """Check if agent subprocess is still running. Returns (alive, clean_exit)."""
     if proc.poll() is None:
         return True
-    # Agent died — log exit info
     rc = proc.returncode
     stdout_fh, log_path = proc._log_files  # type: ignore[attr-defined]
     stdout_fh.close()
-    print(f"[orchestrate] Agent exited with code {rc} (log: {log_path})")
+    # Store exit code so supervisor can distinguish clean exit from crash
+    proc._exit_code = rc  # type: ignore[attr-defined]
+    if rc == 0:
+        print(f"[orchestrate] Agent completed cycle (log: {log_path})")
+    else:
+        print(f"[orchestrate] Agent crashed with code {rc} (log: {log_path})")
     return False
 
 
@@ -472,26 +476,30 @@ def _run_supervisor() -> None:
     _heartbeat_counter = 0
 
     while True:
-        # Health check: restart crashed agents
+        # Health check: restart agents that have exited
         if not _check_agent_alive(experiment_proc):
-            experiment_restarts += 1
-            if experiment_restarts <= _MAX_RESTART_ATTEMPTS:
-                print(f"[orchestrate] Experiment agent died. Restarting ({experiment_restarts}/{_MAX_RESTART_ATTEMPTS})...")
-                time.sleep(_RESTART_BACKOFF_SECONDS)
-                experiment_proc = _launch_agent(_EXPERIMENT_AGENT_PROMPT, "experiment-agent")
-            else:
-                print("[orchestrate] Experiment agent exceeded max restarts. Stopping.")
+            rc = getattr(experiment_proc, '_exit_code', -1)
+            if rc != 0:
+                experiment_restarts += 1
+            if experiment_restarts > _MAX_RESTART_ATTEMPTS:
+                print("[orchestrate] Experiment agent exceeded max crash restarts. Stopping.")
                 _cleanup()
+            label = "cycle complete" if rc == 0 else f"crashed ({experiment_restarts}/{_MAX_RESTART_ATTEMPTS})"
+            print(f"[orchestrate] Restarting experiment-agent ({label})...")
+            time.sleep(_RESTART_BACKOFF_SECONDS if rc != 0 else 5)
+            experiment_proc = _launch_agent(_EXPERIMENT_AGENT_PROMPT, "experiment-agent")
 
         if not _check_agent_alive(research_proc):
-            research_restarts += 1
-            if research_restarts <= _MAX_RESTART_ATTEMPTS:
-                print(f"[orchestrate] Research agent died. Restarting ({research_restarts}/{_MAX_RESTART_ATTEMPTS})...")
-                time.sleep(_RESTART_BACKOFF_SECONDS)
-                research_proc = _launch_agent(_RESEARCH_AGENT_PROMPT, "research-agent")
-            else:
-                print("[orchestrate] Research agent exceeded max restarts. Stopping.")
+            rc = getattr(research_proc, '_exit_code', -1)
+            if rc != 0:
+                research_restarts += 1
+            if research_restarts > _MAX_RESTART_ATTEMPTS:
+                print("[orchestrate] Research agent exceeded max crash restarts. Stopping.")
                 _cleanup()
+            label = "cycle complete" if rc == 0 else f"crashed ({research_restarts}/{_MAX_RESTART_ATTEMPTS})"
+            print(f"[orchestrate] Restarting research-agent ({label})...")
+            time.sleep(_RESTART_BACKOFF_SECONDS if rc != 0 else 5)
+            research_proc = _launch_agent(_RESEARCH_AGENT_PROMPT, "research-agent")
 
         _heartbeat_counter += 1
         if _heartbeat_counter % 10 == 0:
