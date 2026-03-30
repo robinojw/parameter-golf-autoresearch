@@ -20,126 +20,70 @@ This project keeps autoresearch's modify-train-evaluate-decide loop at the cente
 The system runs as three processes: a thin process supervisor and two independent Claude Code (Opus 4.6) agents — one for experiments, one for research. The agents communicate via shared JSONL files and the supervisor manages infrastructure lifecycle.
 
 ```mermaid
-graph TB
-    subgraph "Process Supervisor (orchestrate.py)"
-        ORC["orchestrate.py\nno LLM — process management only"]
-        BUD["BudgetManager\nreserve floor + 1hr rate limit"]
-        THR["Dynamic Threshold\nscales with SOTA distance"]
-        ORC --> BUD
-        ORC --> THR
-    end
-
-    subgraph "Experiment Agent (Opus 4.6)"
-        EXP["hypothesis design\nlocal MLX experiments\ntournament + promotion"]
-        CON["Constraint Calculator\nfeasibility before code"]
-        CTM["Contamination Check\nAST + score plausibility"]
-        CRT["Critic Gate\ndeterministic + LLM checks"]
-        EXP --> CON
-        EXP --> CTM
-        EXP --> CRT
-    end
-
-    subgraph "Research Agent (Opus 4.6)"
-        RES["autonomous + reactive research\n10 sources, grading pipeline\ncompetitive intelligence"]
-    end
-
-    subgraph "Shared Files"
-        RQ["research_queue.jsonl\n(experiment → research)"]
-        RR["research_results.jsonl\n(research → experiment)"]
-        PQ["promotion_queue.jsonl\n(experiment → supervisor)"]
-        PM["program.md\n(research → experiment)"]
-        TSV["results.tsv\n(experiment → research)"]
-    end
-
-    subgraph "Tier 1 - Local Mac (free)"
-        MLX["train_gpt_mlx.py\nMLX / Apple Silicon"]
-    end
-
-    subgraph "Tier 2 - ~$3.50 per run"
-        POD["8xH100 SXM Pod\ntorchrun, 600s max"]
-    end
-
-    EXP --> RQ
-    EXP --> PQ
-    EXP --> MLX
-    RES --> RR
-    RES --> PM
-    RR --> EXP
-    PM --> EXP
-    TSV --> RES
-    PQ --> ORC
-    ORC -- "MCP create/delete\nSSH execute" --> POD
-    POD --> TSV
+graph LR
+    ORC["Supervisor\norchestrate.py"] -. spawn .-> EXP["Experiment Agent"]
+    ORC -. spawn .-> RES["Research Agent"]
+    EXP <-- "shared JSONL files" --> RES
+    EXP --> MLX["Tier 1: MLX (free)"]
+    ORC --> POD["Tier 2: 8xH100 (~$3.50)"]
 ```
 
 ## How It Works
 
-### Dual-Agent Design
+The experiment agent and research agent run as independent Claude Code instances, each with full autonomy over their domain. Neither blocks the other. The process supervisor (`orchestrate.py`) has no LLM logic — it spawns both agents, monitors their health (restarting on crash, up to 5 attempts), and polls `promotion_queue.jsonl` for Tier 2 promotion requests. When a promotion arrives, the supervisor handles the full RunPod lifecycle: budget check, threshold check, pod creation via API, code sync and training execution via SSH, result retrieval, and pod termination.
 
-The experiment agent and research agent run as independent Claude Code instances, each with full autonomy over their domain. The experiment agent designs hypotheses, implements them, and runs local experiments. The research agent continuously discovers, grades, and synthesizes research from 10 sources. Neither blocks the other.
+### Experiment Agent
 
-When the experiment agent needs targeted research — e.g., it hit an entropy floor with ternary quantization and needs alternatives — it writes a natural language request to `research_queue.jsonl`. The research agent picks it up, searches relevant sources, runs the grading pipeline, and writes findings to `research_results.jsonl`. The experiment agent checks for fresh results before designing its next hypothesis and decides autonomously whether to wait or proceed.
+The experiment agent designs hypotheses, implements them in `train_gpt_mlx.py`, and runs local experiments. Every hypothesis must pass deterministic hard gates before any code is written or compute is spent.
 
-The process supervisor (`orchestrate.py`) has no LLM logic. It spawns both agents, monitors their health (restarting on crash, up to 5 attempts), and polls `promotion_queue.jsonl` for Tier 2 promotion requests. When a promotion arrives, the supervisor handles the full RunPod lifecycle: budget check, threshold check, pod creation via API, code sync and training execution via SSH, result retrieval, and pod termination.
+```mermaid
+graph LR
+    HYP["Hypothesis"] --> GATES{"Hard gates\nconstraints, contamination\ncritic"}
+    GATES -- pass --> RUN["MLX experiment\n500 iterations"]
+    GATES -- fail --> HYP
+    RUN --> LOG["results.tsv"]
+    LOG --> TOURN["Tournament\n4 → 2 → winner"]
+    TOURN -- "clears threshold" --> PROMOTE["promotion_queue.jsonl\n→ RunPod"]
+    TOURN -- "below threshold" --> HYP
+```
 
-### Hard Gates
+**Hard gates** (the agent cannot override these):
+1. **Constraint check** — artifact size, training steps, quantization MSE, entropy bounds, memory footprint (`compute/constraints.py`)
+2. **Contamination check** — AST analysis for validation data leakage, score plausibility (`compute/contamination.py`)
+3. **Critic gate** — artifact size, diff size, similarity to past failures (`research/critic.py`)
+4. **Promotion threshold** — dynamic, scales with SOTA distance; adaptive fallback after 10 rejections (`compute/threshold.py`)
+5. **Budget check** — reserve floor and rate limiting for Tier 2 (`compute/budget.py`)
 
-Every hypothesis must pass deterministic checks before any code is written or any compute is spent. These are code-level gates the agents cannot override:
+**Tournament mode** (`python orchestrate.py --tournament`) generates 4 candidate modifications, runs each for 100 iterations in an elimination round, advances the top 2 to a full 500-iteration run, and reports the winner.
 
-1. **Constraint check** — artifact size, training steps, quantization MSE, entropy bounds, and memory footprint must all pass (`compute/constraints.py`)
-2. **Contamination check** — AST analysis verifies no validation data is referenced in training loops, and score plausibility checks flag suspiciously disproportionate val improvements (`compute/contamination.py`)
-3. **Critic gate** — artifact size, diff size, and similarity to past failures (`research/critic.py`)
-4. **Promotion threshold** — dynamic threshold that starts high and narrows as local evidence builds; adaptive fallback relaxes after 10 consecutive rejections (`compute/threshold.py`)
-5. **Budget check** — reserve floor and rate limiting block Tier 2 submissions (`compute/budget.py`)
+### Research Agent
 
-### Competitive Intelligence
+The research agent continuously discovers, grades, and synthesizes research. It operates in two modes: autonomous (drives its own search cadence) and reactive (responds to experiment agent requests via `research_queue.jsonl`).
 
-The research agent monitors the Parameter Golf leaderboard and competitor repos (`openai/parameter-golf`, `KellerJordan/modded-nanogpt`, `karpathy/autoresearch`). When SOTA moves, it updates the target in `program.md`, signals the experiment agent, and investigates the technique. Any technique extracted from a competitor must pass the full constraint validation suite before being suggested — and accepted leaderboard submissions are prioritized over unverified code as known-legal.
+```mermaid
+graph LR
+    SRC["10 sources\nArXiv, GitHub, Tavily..."] --> PREFILT["Pre-filter\nreject infeasible"]
+    PREFILT --> GRADE["LLM grade\nscore /15"]
+    GRADE --> MICRO["Micro-run\n50 iter MLX"]
+    MICRO --> VERIFY["Verify\nTier A items"]
+    VERIFY --> INJECT["Inject into\nprogram.md"]
+    REQ["research_queue.jsonl"] --> SRC
+    TSV["results.tsv"] --> GRADE
+```
 
-### Tournament Mode
-
-For structured hypothesis testing, tournament mode (`python orchestrate.py --tournament`) generates 4 candidate modifications via LLM, runs each for 100 iterations in an elimination round, advances the top 2 to a full 500-iteration run, and reports the winner.
+**Competitive intelligence:** The agent monitors the Parameter Golf leaderboard and competitor repos (`openai/parameter-golf`, `KellerJordan/modded-nanogpt`, `karpathy/autoresearch`). When SOTA moves, it updates the target, signals the experiment agent, and investigates the technique. Any technique extracted from a competitor must pass the full constraint validation suite — accepted leaderboard submissions are prioritized as known-legal.
 
 ### Budget and Pod Safety
 
 `BudgetManager.can_submit()` blocks Tier 2 submissions below the reserve floor, with a one-hour rate limit on consecutive runs. `RunPodClient._cleanup_all` registers as both `atexit` and `SIGTERM` handler — if the supervisor dies, active pods get terminated. At $20/hour for 8xH100s, a forgotten pod costs ~$0.33/minute.
 
-## Research Pipeline
+## Research Pipeline Details
 
-The research agent drives its own research cadence — no fixed timers. It decides what's stale and where to focus based on experiment results, competitive landscape changes, and source yield. It also responds to targeted requests from the experiment agent via `research_queue.jsonl`.
+The **constraint pre-filter** extracts parameter counts and bit-widths from titles and abstracts using regex (e.g., "50M params", "int4", "6-bit"). Items where both are extractable and `feasibility_report()` says infeasible get auto-rejected to Tier C — no LLM tokens spent. Items where extraction fails pass through (fail-open).
 
-```mermaid
-graph LR
-    subgraph "Fast sources"
-        D["GitHub PRs\n+ Code Search"]
-        F["Tavily\nscheduled + on-demand"]
-    end
+Each paper that survives the pre-filter gets scored across five dimensions: `bpb_impact`, `size_compatibility`, `time_compatibility`, `implementability`, and `novelty`. The grader knows the current SOTA, the techniques already on the leaderboard, and the hard artifact and training constraints. A paper that requires a new pip dependency, pushes the 16MB limit, or would exceed 600s of training time scores low regardless of the idea's quality. The top 12 scored items, by default, get injected into `program.md`.
 
-    subgraph "Slow sources"
-        A["ArXiv"]
-        B["OpenReview"]
-        C["Semantic Scholar"]
-        E["RSS feeds\nCodeSOTA"]
-    end
-
-    subgraph "Experiment Agent signals"
-        REQ["research_queue.jsonl\ntargeted requests"]
-        RES["results.tsv\nexperiment outcomes"]
-    end
-
-    D & F --> FAST["fetch_fast()"]
-    A & B & C & E --> SLOW["fetch_slow()"]
-    FAST & SLOW --> CACHE["raw_cache.jsonl"]
-    CACHE --> GRADE["grade_items()\nscore /15 across 5 dimensions"]
-    GRADE --> GCACHE["graded_cache.jsonl"]
-    GCACHE --> VERIFY["verify top Tier A\nfull content + web evidence"]
-    VERIFY --> REFLECT["reflect()\nsynthesize strategy\nupdate technique map"]
-    REFLECT --> INJECT["inject into program.md\n+ research_results.jsonl"]
-    REQ --> |"triggers targeted search"| FAST
-    RES --> |"adapts search strategy"| REFLECT
-```
-
-Each paper gets scored across five dimensions: `bpb_impact`, `size_compatibility`, `time_compatibility`, `implementability`, and `novelty`. The grader knows the current SOTA, the techniques already on the leaderboard, and the hard artifact and training constraints. A paper that requires a new pip dependency, pushes the 16MB limit, or would exceed 600s of training time scores low regardless of the idea's quality. The top 12 scored items, by default, get injected into `program.md`.
+Before Tier A items proceed to expensive verification, a **post-grade feasibility gate** runs the same constraint check against the LLM's grading summary. This catches cases where the LLM scored `size_compatibility` high but the actual numbers don't fit.
 
 After grading and verification, a **reflection cycle** synthesizes experiment history into strategic guidance — identifying failure patterns, exhausted vs. promising search dimensions, and recommending next experiments. The output is written to `strategy.md` and injected into `program.md` so the agent sees synthesized strategic state alongside raw data.
 
@@ -164,6 +108,12 @@ The calculator auto-calibrates from weight files on disk when available, using o
 
 A separate **contamination detection** module (`compute/contamination.py`) provides deterministic TTT leakage detection. It parses training scripts via AST to find validation data references in training loops, and checks whether val_bpb improvements are plausibly explained by training loss changes. These are hard gates — a failed contamination check blocks the experiment.
 
+## Micro-Experiment Runner
+
+The research agent can sanity-check hypotheses before recommending them to the experiment agent. The **micro-runner** (`research/tools/micro_run.py`) takes a unified diff against `train_gpt_mlx.py`, applies it to a temporary copy, runs 50 iterations on synthetic data (~15 seconds on an M4 MacBook Air), and returns structured metrics: whether the code crashes, whether loss decreases, timing per iteration, and artifact size.
+
+This isn't a full experiment — it runs on random tokens, not FineWeb. But it catches syntax errors, import failures, NaN divergence, and obvious non-starters before they waste experiment cycles. The research agent invokes it after grading a promising technique (Tier A/B) and uses the result to decide whether to recommend the technique with empirical backing or discard it.
+
 ## Repository Structure
 
 ```
@@ -187,14 +137,17 @@ parameter-golf-autoresearch/
 │   └── sync.py             # rsync push/pull and remote torchrun over SSH
 ├── research/
 │   ├── fetch.py            # async fetch from 10 sources (agent-driven cadence)
-│   ├── grade.py            # LLM grading in batches of 10, five-dimension scoring
-│   ├── verify.py           # deep verification of Tier A items with full content + web evidence
+│   ├── extract_params.py   # regex extraction of params/bits from text (pre-filter)
+│   ├── grade.py            # LLM grading with constraint pre-filter
+│   ├── verify.py           # deep verification with post-grade feasibility gate
 │   ├── reflect.py          # reflection cycle: strategy synthesis + technique map maintenance
 │   ├── critic.py           # pre-commit gate: artifact size, diff size, similarity, LLM review
 │   ├── inject.py           # section injection into program.md + research_results.jsonl
 │   ├── experiments.py      # read-only API for results.tsv, competitor data, source yield
+│   ├── tools/
+│   │   └── micro_run.py    # 50-iteration MLX micro-runner for hypothesis sanity-checking
 │   └── sources/            # one module per source (arxiv, openreview, semantic_scholar, ...)
-├── tests/                  # pytest suite (110 tests)
+├── tests/                  # pytest suite (142 tests)
 ├── data/                   # FineWeb token data for training
 ├── runpod_results/         # logs pulled from completed RunPod runs
 ├── results.tsv             # experiment history: commit, tier, val_bpb, cost, source_item
@@ -283,6 +236,7 @@ python orchestrate.py --threshold-status
 | `PROMOTION_FALLBACK_WINDOW` | No | `10` | Consecutive local runs before adaptive threshold relaxation |
 | `S2_API_KEY` | No | | Semantic Scholar API key for higher rate limits |
 | `TAVILY_MONTHLY_BUDGET_USD` | No | `5.00` | Soft cap on Tavily spend |
+| `MLX_PYTHON` | No | `sys.executable` | Python interpreter with MLX installed (for micro-runner) |
 
 ## Cost Model
 
@@ -298,4 +252,4 @@ Tavily adds up if the research agent fires many ad-hoc queries in response to ex
 
 The challenge presents itself as an ML optimization problem, but most of the interesting engineering lives in the infrastructure around the model. The metric is `val_bpb` and the model changes happen in two Python files, but the harder problems are: how do you prevent a hung pod from draining your account, how do you route research signal into an agent's context without overwhelming it, how do you decide which local improvements are worth paying $3.50 to validate, and how do you maintain a clean audit trail across hundreds of experiments on two different hardware targets?
 
-The answers here are deliberately unclever. Two independent agents keep research and experimentation from blocking each other. `atexit` handles the pod lifecycle. A five-dimension LLM grader handles the research signal, driven by the research agent's own judgment of what's stale and what's productive. Deterministic constraint and contamination checks catch doomed ideas and data leakage before code is written. A dynamic threshold that scales with distance from SOTA handles the promotion gate. A periodic reflection cycle synthesizes strategy from raw experiment history. A critic catches repeated mistakes before they waste a training run. A tournament tests multiple hypotheses instead of betting on the first plausible idea. `results.tsv` handles the audit trail. None of it is surprising, but it's the kind of plumbing that needs to exist before you can run experiments reliably at any volume. The model is rarely the hard part; the system around it is.
+The answers here are deliberately unclever. Two independent agents keep research and experimentation from blocking each other. `atexit` handles the pod lifecycle. A constraint pre-filter kills infeasible ideas before spending LLM tokens; a micro-runner kills plausible-sounding ideas that crash in practice. Deterministic contamination checks catch data leakage before code is written. A dynamic threshold that scales with distance from SOTA handles the promotion gate. A periodic reflection cycle synthesizes strategy from raw experiment history. A critic catches repeated mistakes before they waste a training run. A tournament tests multiple hypotheses instead of betting on the first plausible idea. `results.tsv` handles the audit trail. None of it is surprising, but it's the kind of plumbing that needs to exist before you can run experiments reliably at any volume. The model is rarely the hard part; the system around it is.

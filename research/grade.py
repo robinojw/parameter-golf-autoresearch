@@ -265,12 +265,65 @@ def _make_error_item(item_id: str, reason: str) -> GradedItem:
     )
 
 
+def prefilter_infeasible(items: list[RawItem]) -> dict:
+    """Pre-filter items that are mathematically infeasible.
+
+    Attempts to extract params and bits from title + abstract.
+    If both are found and feasibility_report says infeasible, reject.
+    If extraction fails, pass through (fail-open).
+
+    Returns:
+        {"passed": [...], "rejected": [...]}
+    """
+    from research.extract_params import extract_params
+    from compute.constraints import feasibility_report
+
+    passed = []
+    rejected = []
+
+    for item in items:
+        text = f"{item.title} {item.abstract}"
+        extracted = extract_params(text)
+        params = extracted["params"]
+        bits = extracted["bits"]
+
+        if params is not None and bits is not None:
+            report = feasibility_report(params=params, bits=bits)
+            if not report["feasible"]:
+                rejected.append(item)
+                continue
+
+        passed.append(item)
+
+    if rejected:
+        print(f"[grade:prefilter] Rejected {len(rejected)} infeasible items")
+
+    return {"passed": passed, "rejected": rejected}
+
+
 def grade_items(items: list[RawItem]) -> list[GradedItem]:
     already_graded = _load_graded_ids()
     to_grade = [item for item in items if item.id not in already_graded]
 
     if not to_grade:
         return []
+
+    # Pre-filter: reject mathematically infeasible items before LLM grading
+    filter_result = prefilter_infeasible(to_grade)
+    to_grade = filter_result["passed"]
+    rejected_graded = [
+        GradedItem(
+            id=item.id, score=0, tier="C",
+            score_breakdown={}, agent_summary="Auto-rejected: infeasible constraints",
+            flags=["prefilter_rejected"],
+        )
+        for item in filter_result["rejected"]
+    ]
+
+    if not to_grade:
+        if rejected_graded:
+            _append_graded(rejected_graded)
+        return rejected_graded
 
     has_competitors = bool(get_competitor_scores())
     graded: list[GradedItem] = []
@@ -314,6 +367,7 @@ def grade_items(items: list[RawItem]) -> list[GradedItem]:
             for item in batch:
                 graded.append(_make_error_item(item.id, f"Grading failed: {exc}"))
 
+    graded.extend(rejected_graded)
     _append_graded(graded)
     return graded
 

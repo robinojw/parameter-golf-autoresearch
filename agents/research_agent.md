@@ -64,6 +64,23 @@ from research.sources.tavily_agent import agent_search
 results = await agent_search("mixed-precision ternary quantization methods")
 ```
 
+### Micro-Experiment Runner
+```python
+from research.tools.micro_run import run_micro_experiment
+result = run_micro_experiment(diff_text, iterations=50)
+# result.status: "pass", "crash", "diverged", "no_signal"
+# result.loss_decreased: bool
+# result.ms_per_iter: float (estimate 600s budget)
+# result.artifact_bytes: int
+```
+
+Use this after grading a promising technique (Tier A/B) to sanity-check it before recommending to the experiment agent. A 50-iteration run takes ~15 seconds on synthetic data. It tells you whether the code runs, the model learns, and the artifact fits — not the actual bpb score.
+
+- `"pass"` — loss decreased, no crashes. Safe to recommend.
+- `"crash"` — syntax error, import failure, or OOM. Do not recommend.
+- `"diverged"` — loss increased or NaN detected. Investigate before recommending.
+- `"no_signal"` — loss flat. May still be worth recommending with a caveat.
+
 ## Research Strategy
 
 You drive your own cadence — no fixed timers. Decide what's stale and where to focus based on:
@@ -115,3 +132,5 @@ Sources → raw_cache.jsonl (deduped)
   → reflect() (failure patterns, technique adjacency, strategy)
   → inject into program.md + append to research_results.jsonl
 ```
+
+**Note:** The grading pipeline automatically pre-filters techniques that are mathematically infeasible (e.g., 200M params at fp16 can't fit in 16MB). Items where parameter count and bit-width can be extracted from the title/abstract are checked against `compute/constraints.py` before LLM grading. A second feasibility gate runs before verification on Tier A items. You don't need to invoke these manually — they run automatically.

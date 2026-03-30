@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import re
 from dataclasses import asdict, dataclass, field
@@ -7,8 +9,6 @@ from pathlib import Path
 from research.experiments import get_current_best_bpb
 from research.fetch import GradedItem, RawItem
 from research.grade import _detect_harness, _run_claude, _run_opencode
-from research.sources.tavily_agent import agent_search
-from research.sources.tavily_extract import extract_url
 
 VERIFIED_CACHE_PATH = Path("verified_cache.jsonl")
 VERIFICATION_SCORE_THRESHOLD = 10.0
@@ -160,6 +160,7 @@ def _find_raw_item(item_id: str, raw_items: list[RawItem]) -> RawItem | None:
 
 
 async def _extract_full_content(raw: RawItem) -> tuple[str, bool]:
+    from research.sources.tavily_extract import extract_url
     try:
         content = await extract_url(raw.url)
         if content:
@@ -173,6 +174,7 @@ async def _extract_full_content(raw: RawItem) -> tuple[str, bool]:
 def _collect_verification_evidence(
     title: str, abstract: str
 ) -> tuple[list[str], list[str]]:
+    from research.sources.tavily_agent import agent_search
     queries = _generate_verification_queries(title, abstract)
     results_parts: list[str] = []
     sources: list[str] = []
@@ -245,6 +247,36 @@ async def _verify_single_item(graded: GradedItem, raw: RawItem) -> VerifiedItem:
     return verified_item
 
 
+def filter_infeasible_candidates(candidates: list[GradedItem]) -> list[GradedItem]:
+    """Post-grade feasibility gate. Checks agent_summary for extractable params/bits.
+
+    If params and bits are found and the configuration is infeasible, the item
+    is dropped. If extraction fails, the item passes through (fail-open).
+    Items already flagged as prefilter_rejected are dropped.
+    """
+    from research.extract_params import extract_params
+    from compute.constraints import feasibility_report
+
+    filtered = []
+    for item in candidates:
+        if "prefilter_rejected" in item.flags:
+            continue
+
+        extracted = extract_params(item.agent_summary)
+        params = extracted["params"]
+        bits = extracted["bits"]
+
+        if params is not None and bits is not None:
+            report = feasibility_report(params=params, bits=bits)
+            if not report["feasible"]:
+                print(f"[verify:gate] Dropping {item.id}: infeasible ({params:,} params at {bits}-bit)")
+                continue
+
+        filtered.append(item)
+
+    return filtered
+
+
 async def verify_top_items(
     graded_items: list[GradedItem],
     raw_items: list[RawItem],
@@ -258,7 +290,10 @@ async def verify_top_items(
         ],
         key=lambda x: x.score,
         reverse=True,
-    )[:MAX_ITEMS_TO_VERIFY]
+    )
+    # Post-grade feasibility gate
+    candidates = filter_infeasible_candidates(candidates)
+    candidates = candidates[:MAX_ITEMS_TO_VERIFY]
     if not candidates:
         return []
     verified: list[VerifiedItem] = []
