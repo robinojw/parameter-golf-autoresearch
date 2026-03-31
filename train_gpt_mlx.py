@@ -40,8 +40,8 @@ LR = float(os.getenv("LR", "3e-4"))
 LOGIT_SOFTCAP = float(os.getenv("LOGIT_SOFTCAP", "30.0"))
 ROPE_BASE = float(os.getenv("ROPE_BASE", "10000.0"))
 ROPE_DIMS = int(os.getenv("ROPE_DIMS", "16"))
-QK_GAIN_INIT = float(os.getenv("QK_GAIN_INIT", "1.5"))
-LEAKY_SLOPE = float(os.getenv("LEAKY_SLOPE", "0.5"))
+QK_GAIN_INIT = float(os.getenv("QK_GAIN_INIT", "4.0"))
+LEAKY_SLOPE = float(os.getenv("LEAKY_SLOPE", "0.3"))
 # EngramLite params
 NGRAM_BUCKETS = int(os.getenv("NGRAM_BUCKETS", "8192"))
 NGRAM_HEADS = int(os.getenv("NGRAM_HEADS", "2"))
@@ -57,6 +57,14 @@ XSA_LAST_N = int(os.getenv("XSA_LAST_N", "11"))
 WARMUP_STEPS = int(os.getenv("WARMUP_STEPS", "20"))
 WARMDOWN_FRAC = float(os.getenv("WARMDOWN_FRAC", "0.3"))  # last 30% of training
 GRAD_CLIP_NORM = float(os.getenv("GRAD_CLIP_NORM", "0.3"))
+# Muon optimizer
+USE_MUON = bool(int(os.getenv("USE_MUON", "1")))
+MUON_LR = float(os.getenv("MUON_LR", "0.025"))
+MUON_MOMENTUM = float(os.getenv("MUON_MOMENTUM", "0.85"))
+MUON_MOMENTUM_END = float(os.getenv("MUON_MOMENTUM_END", "0.99"))
+MUON_WARMUP = int(os.getenv("MUON_WARMUP", "500"))
+MUON_WD = float(os.getenv("MUON_WD", "0.04"))
+MUON_NS_STEPS = int(os.getenv("MUON_NS_STEPS", "5"))
 EMA_DECAY = float(os.getenv("EMA_DECAY", "0.995"))
 EMA_START = int(os.getenv("EMA_START", "100"))  # start EMA after step 100
 
@@ -567,6 +575,90 @@ def orthogonal_init(shape, gain: float = 1.0) -> mx.array:
 MAX_VAL_TOKENS = int(os.getenv("MAX_VAL_TOKENS", "524288"))  # 512K tokens max for local eval
 
 
+# ---------------------------------------------------------------------------
+# Muon optimizer (Newton-Schulz orthogonalization)
+# ---------------------------------------------------------------------------
+
+def zeropower_via_ns(G: mx.array, steps: int = 5) -> mx.array:
+    """Newton-Schulz 5-step orthogonalization. Coefficients from PR #1120."""
+    a, b, c = 3.4445, -4.7750, 2.0315
+    norm = mx.sqrt(mx.sum(G * G)) + 1e-7
+    X = G / norm
+    transposed = X.shape[0] > X.shape[1]
+    if transposed:
+        X = X.T
+    for _ in range(steps):
+        A = X @ X.T
+        B = b * A + c * (A @ A)
+        X = a * X + B @ X
+    if transposed:
+        X = X.T
+    return X
+
+
+def _get_nested(d, path: tuple):
+    for key in path:
+        d = d[key]
+    return d
+
+
+def _set_nested(d, path: tuple, value):
+    for key in path[:-1]:
+        d = d[key]
+    d[path[-1]] = value
+
+
+def build_muon_paths(num_layers: int, has_engram: bool, ve_enabled: bool, ve_has_proj: bool) -> list:
+    """List of parameter dict paths for 2D linear weights (Muon targets)."""
+    paths = []
+    for i in range(num_layers):
+        for sub in ["c_q", "c_k", "c_v", "proj"]:
+            paths.append(("blocks", i, "attn", sub, "weight"))
+        paths.append(("blocks", i, "mlp", "fc", "weight"))
+        paths.append(("blocks", i, "mlp", "proj_down", "weight"))
+    if has_engram:
+        paths.append(("engram", "proj", "weight"))
+    if ve_enabled and ve_has_proj:
+        paths.append(("ve_shared", "proj", "weight"))
+    return paths
+
+
+class MuonState:
+    """Momentum buffers for Muon optimizer."""
+    def __init__(self, paths: list, params: dict):
+        self.paths = paths
+        self.bufs = {path: mx.zeros_like(_get_nested(params, path)) for path in paths}
+        self.step = 0
+
+
+def muon_apply(model, grads: dict, state: MuonState, lr: float, wd: float) -> None:
+    """Apply Muon update to all 2D linear weights. Zero their grads in-place."""
+    params = model.parameters()
+    step = state.step
+    state.step += 1
+    # Momentum warmup: 0.85 -> 0.99 over MUON_WARMUP steps
+    mom = MUON_MOMENTUM + (MUON_MOMENTUM_END - MUON_MOMENTUM) * min(1.0, step / max(1, MUON_WARMUP))
+
+    for path in state.paths:
+        grad = _get_nested(grads, path)
+        param = _get_nested(params, path)
+        buf = state.bufs[path]
+
+        buf = mom * buf + grad
+        state.bufs[path] = buf
+
+        update = grad + mom * buf  # Nesterov
+        update = zeropower_via_ns(update, MUON_NS_STEPS)
+
+        M, N = param.shape
+        scale = math.sqrt(max(1.0, M / N))
+
+        _set_nested(params, path, param * (1.0 - lr * wd) - lr * scale * update)
+        _set_nested(grads, path, mx.zeros_like(grad))  # prevent double-update via AdamW
+
+    model.update(params)
+
+
 def eval_val(model: GPT, val_tokens: mx.array, seq_len: int, batch_size: int) -> float:
     total_tokens = min(val_tokens.shape[0], MAX_VAL_TOKENS)
     usable = ((total_tokens - 1) // seq_len) * seq_len
@@ -628,7 +720,14 @@ def main() -> None:
     n_params = _count_params(model.parameters())
     print(f"model_params: {n_params}")
 
-    optimizer = optim.AdamW(learning_rate=LR, weight_decay=0.04)
+    # Muon for 2D linear weights, AdamW (no WD) for everything else
+    muon_state = None
+    if USE_MUON:
+        ve_has_proj = VE_ENABLED and VE_DIM != (NUM_KV_HEADS * (MODEL_DIM // NUM_HEADS))
+        muon_paths = build_muon_paths(NUM_LAYERS, NGRAM_BUCKETS > 0, VE_ENABLED, ve_has_proj)
+        muon_state = MuonState(muon_paths, model.parameters())
+        print(f"muon: enabled, {len(muon_paths)} param groups")
+    optimizer = optim.AdamW(learning_rate=LR, weight_decay=0.0 if USE_MUON else 0.04)
 
     loss_and_grad = nn.value_and_grad(
         model, lambda mdl, inp, tgt: cross_entropy(mdl(inp), tgt)
@@ -675,6 +774,7 @@ def main() -> None:
     for step in range(1, ITERATIONS + 1):
         # LR schedule
         lr = get_lr(step - 1, ITERATIONS, LR)
+        muon_lr = get_lr(step - 1, ITERATIONS, MUON_LR) if USE_MUON else 0.0
         optimizer.learning_rate = lr
 
         if has_data and train_stream is not None:
@@ -688,6 +788,8 @@ def main() -> None:
         if GRAD_CLIP_NORM > 0:
             grads = clip_grad_norm(grads, GRAD_CLIP_NORM)
 
+        if USE_MUON and muon_state is not None:
+            muon_apply(model, grads, muon_state, muon_lr, MUON_WD)
         optimizer.apply_gradients(grads, model)
         mx.eval(model.parameters(), optimizer.state)
 
