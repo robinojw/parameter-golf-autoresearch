@@ -12,6 +12,7 @@ import math
 import os
 import struct
 import time
+from math import gcd
 from pathlib import Path
 
 import mlx.core as mx
@@ -68,6 +69,10 @@ MUON_NS_STEPS = int(os.getenv("MUON_NS_STEPS", "5"))
 EMA_DECAY = float(os.getenv("EMA_DECAY", "0.995"))
 EMA_START = int(os.getenv("EMA_START", "100"))  # start EMA after step 100
 EMA_EVAL_EVERY = int(os.getenv("EMA_EVAL_EVERY", "50"))  # force eval EMA every N steps
+# Coprime-stride data loader
+COPRIME_LOADER = bool(int(os.getenv("COPRIME_LOADER", "1")))
+# WARMDOWN_ITERS: absolute count (0 = use WARMDOWN_FRAC fraction instead)
+WARMDOWN_ITERS = int(os.getenv("WARMDOWN_ITERS", "0"))
 
 BATCH_SIZE = TRAIN_BATCH_TOKENS // TRAIN_SEQ_LEN
 LOG_2 = math.log(2)
@@ -114,12 +119,79 @@ class TokenStream:
         return chunks[0] if len(chunks) == 1 else np.concatenate(chunks)
 
 
+class CoprimeTokenStream:
+    """Diversity-weighted shard sampling with coprime stride (PR #1135 technique)."""
+
+    def __init__(self, pattern: str, total_steps: int = 500,
+                 alpha_start: float = 0.90, alpha_end: float = 0.50):
+        self.files = sorted(glob.glob(pattern))
+        if not self.files:
+            raise FileNotFoundError(f"No files for pattern: {pattern}")
+        self.total_steps = max(1, total_steps)
+        self.step = 0
+        self.alpha_start = alpha_start
+        self.alpha_end = alpha_end
+
+        # Load shard lengths from headers
+        self.shard_lengths = []
+        for f in self.files:
+            hdr = np.fromfile(f, dtype="<i4", count=256)
+            self.shard_lengths.append(int(hdr[2]))
+
+        rng = np.random.default_rng()
+        # Random phase init: don't always start at position 0
+        self.positions = [int(rng.integers(0, max(1, l))) for l in self.shard_lengths]
+        # Coprime stride ≈ shard_len//2: ensures full coverage over training
+        self.strides = [self._coprime_stride(l) for l in self.shard_lengths]
+        self._cache_idx = -1
+        self._cache = None
+
+    def _coprime_stride(self, n: int) -> int:
+        s = max(1, n // 2)
+        while gcd(s, n) != 1:
+            s += 1
+        return s
+
+    def _alpha(self) -> float:
+        progress = min(1.0, self.step / self.total_steps)
+        return self.alpha_start - (self.alpha_start - self.alpha_end) * progress
+
+    def _select_shard(self) -> int:
+        if len(self.files) == 1:
+            return 0
+        alpha = self._alpha()
+        w = np.array(self.shard_lengths, dtype=np.float64) ** alpha
+        w /= w.sum()
+        return int(np.random.choice(len(self.files), p=w))
+
+    def _load(self, idx: int) -> np.ndarray:
+        if idx != self._cache_idx:
+            hdr = np.fromfile(self.files[idx], dtype="<i4", count=256)
+            n = int(hdr[2])
+            self._cache = np.fromfile(self.files[idx], dtype="<u2", count=n, offset=1024)
+            self._cache_idx = idx
+        return self._cache
+
+    def take(self, n: int) -> np.ndarray:
+        self.step += 1
+        si = self._select_shard()
+        tok = self._load(si)
+        L = len(tok)
+        p = self.positions[si]
+        if p + n <= L:
+            out = tok[p:p + n].copy()
+        else:
+            out = np.concatenate([tok[p:], tok[:n - (L - p)]])
+        self.positions[si] = (p + self.strides[si]) % L
+        return out.astype(np.int32)
+
+
 def _have_data() -> bool:
     train_pattern = os.path.join(DATA_PATH, "fineweb_train_*.bin")
     return len(glob.glob(train_pattern)) > 0
 
 
-def get_batch_real(stream: TokenStream, seq_len: int, batch_size: int):
+def get_batch_real(stream, seq_len: int, batch_size: int):
     total = batch_size * seq_len + 1
     chunk = stream.take(total).astype(np.int32)
     x = chunk[:-1].reshape(batch_size, seq_len)
@@ -528,10 +600,13 @@ def get_artifact_bytes() -> int:
 
 
 def get_lr(step: int, total_steps: int, base_lr: float) -> float:
-    """Warmup + cosine decay with warmdown."""
+    """Warmup + cosine decay with warmdown. Supports absolute WARMDOWN_ITERS."""
     if step < WARMUP_STEPS:
         return base_lr * (step + 1) / WARMUP_STEPS
-    warmdown_start = int(total_steps * (1 - WARMDOWN_FRAC))
+    if WARMDOWN_ITERS > 0:
+        warmdown_start = max(WARMUP_STEPS, total_steps - WARMDOWN_ITERS)
+    else:
+        warmdown_start = int(total_steps * (1 - WARMDOWN_FRAC))
     if step >= warmdown_start:
         progress = (step - warmdown_start) / max(1, total_steps - warmdown_start)
         return base_lr * 0.5 * (1 + math.cos(math.pi * progress))
@@ -760,7 +835,11 @@ def main() -> None:
     val_tokens = None
     if has_data:
         train_pattern = os.path.join(DATA_PATH, "fineweb_train_*.bin")
-        train_stream = TokenStream(train_pattern)
+        if COPRIME_LOADER:
+            train_stream = CoprimeTokenStream(train_pattern, total_steps=ITERATIONS)
+            print(f"coprime_loader: enabled, stride={train_stream.strides[0]}, phase={train_stream.positions[0]}")
+        else:
+            train_stream = TokenStream(train_pattern)
         val_tokens = load_val_tokens()
         print(f"data: loaded from {DATA_PATH}")
         if val_tokens is not None:
