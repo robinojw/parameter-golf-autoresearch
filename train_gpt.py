@@ -143,6 +143,8 @@ class Hyperparameters:
     eggroll_enabled = bool(int(os.environ.get("EGGROLL_ENABLED", "0")))
     eggroll_budget_secs = float(os.environ.get("EGGROLL_BUDGET_SECS", "60.0"))
     eggroll_n_indices = int(os.environ.get("EGGROLL_N_INDICES", "1024"))
+    # P2 focal loss (PR #1180): (1-p)^2 * CE, focuses on uncertain tokens
+    p2_loss = bool(int(os.environ.get("P2_LOSS", "0")))
     # TTT (Test-Time Training) score-first eval — PR #672, 30-epoch cosine = -0.041 bpb
     ttt_enabled = bool(int(os.environ.get("TTT_ENABLED", "0")))
     ttt_lr = float(os.environ.get("TTT_LR", "0.002"))
@@ -1200,6 +1202,11 @@ class GPT(nn.Module):
             per_tok_loss = F.cross_entropy(logits.float(), targets, reduction="none")
             weights = self._ngram_tracker.get_weights(input_ids, target_ids)
             main_loss = (per_tok_loss * weights).mean()
+        elif self.p2_loss and self.training:
+            per_tok_loss = F.cross_entropy(logits.float(), targets, reduction="none")
+            p = torch.exp(-per_tok_loss.detach())
+            weights = (1.0 - p) ** 2
+            main_loss = (weights * per_tok_loss).mean()
         else:
             main_loss = F.cross_entropy(logits.float(), targets, reduction="mean")
         if self.training and self.mtp_num_heads > 0 and self.mtp_loss_weight > 0.0:
@@ -2276,6 +2283,7 @@ def main() -> None:
         gated_attention=args.gated_attention,
         value_residual=args.value_residual,
     ).to(device).bfloat16()
+    base_model.p2_loss = args.p2_loss
     # Banks stay FP32 (like CastedLinear weights), cast to BF16 in forward
     base_model.qo_bank.data = base_model.qo_bank.data.float()
     base_model.kv_bank.data = base_model.kv_bank.data.float()
