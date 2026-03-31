@@ -143,6 +143,21 @@ Already on the leaderboard — build on these, don't repeat them:
 
 ## Strategy
 <!-- STRATEGY_START -->
+## 2026-03-31 (Cycle 21 Reflection — TTT smoke test)
+
+**TTT implementation complete (commit ce4ba3c):** Score-first TTT with cosine LR schedule. TTT_EPOCHS=3, TTT_CHUNK_TOKENS=32768, cosine decay from TTT_LR=0.002 to 0. val_bpb 9.380 vs 9.371 MuonEq baseline — neutral/noise at 500 steps. EXPECTED: undertrained model (loss 6.4-9.4) has too-low signal for TTT to adapt meaningfully. TTT timing: 108.9s for 4 chunks (3 epochs each). H100 scale with well-trained model should show full PR #672 gain (-0.041 bpb at 30 epochs).
+
+**TTT API confirmed working:** `_deep_copy_params` + `model.update(orig_params)` restore correctly. `nn.value_and_grad` works in TTT loop. SGD applied with frozen first 2 blocks. Ready for H100 with TTT_EPOCHS=30.
+
+**LOCAL EXPERIMENTS AT LIMIT:** 500-step runs can't validate TTT, ResidLambdas, WARMDOWN_ITERS tuning, or most eval-time techniques. The model is too undertrained. Local experiments should only validate architectural changes (new layers, new loss functions) where even undertrained models show directional signal.
+
+**Priority stack (Cycle 21):**
+1. **IMPLEMENT GPTQ in sota_1120_rascal_train_gpt.py** — Unblocks Tier 2. Full details confirmed in PR #1135.
+2. **Port MuonEq + TTT to H100 script** — Add to Rascal base for submission
+3. **First H100 run** — NS5+MuonEq+TTT_EPOCHS=30 on current stack → target ~1.09-1.10 bpb
+4. **best_agree online ngram** — PR #1145, -0.003 bpb drop-in
+
+---
 ## 2026-03-31 (Cycle 20 Reflection — MuonEq RC experiment)
 
 **MuonEq RC POSITIVE locally (commit d0010d7):** Per-row/col normalization of gradient matrix before NS5 iterations (arxiv:2603.28254). val_bpb 9.371 vs NS5 baseline 9.474 (-0.103 bpb). Closes gap vs Turbo-Muon (9.354) at 500 steps. Unlike Turbo-Muon, keeps standard 5-iter NS which is confirmed better at H100 scale. Training_seconds=1374s (2.75s/step on M4 — acceptable). Novel: not yet on leaderboard.
