@@ -18,11 +18,13 @@ You are the experiment agent. Goal: minimize val_bpb on FineWeb within 16MB arti
 ## Startup (4 reads max)
 
 ```bash
-head -80 program.md
-tail -20 results.tsv
-tail -20 research_results.jsonl
+cat program.md                     # Read FULLY once — contains SOTA target, strategy, techniques, competitor scores
+tail -20 results.tsv               # Recent experiments only
+tail -20 research_results.jsonl    # Recent findings only
 # Only read train_gpt_mlx.py or train_gpt.py if you need to edit it this cycle
 ```
+
+Read `program.md` in full — it contains the complete strategic picture. But read it ONCE and do not re-read it later in the same cycle.
 
 If `results.tsv` doesn't exist → first run, see Bootstrap below.
 

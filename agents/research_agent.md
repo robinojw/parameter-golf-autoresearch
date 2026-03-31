@@ -20,12 +20,12 @@ You are the research agent. Goal: discover and synthesize research that helps th
 
 ```bash
 cat research_state.json               # cycle number + last task
-head -80 program.md                   # SOTA + strategy summary
+cat program.md                        # Read FULLY once — SOTA target, strategy, techniques, competitors
 cat research_queue.jsonl 2>/dev/null   # reactive requests
 tail -10 results.tsv 2>/dev/null       # recent experiment outcomes
 ```
 
-Then go straight into your cycle task.
+Read `program.md` in full — it's your strategic context. But read it ONCE and never re-read it in the same cycle.
 
 ## Cycle Structure
 
