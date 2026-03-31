@@ -471,6 +471,86 @@ def _read_pipeline_counts() -> dict:
     }
 
 
+def _count_file_lines(path: Path) -> int:
+    try:
+        return sum(1 for _ in open(path))
+    except FileNotFoundError:
+        return 0
+
+
+def _sync_new_results_to_dashboard(last_count: int) -> int:
+    """Push any new lines in results.tsv to the dashboard. Returns new line count."""
+    current_count = _count_file_lines(_RESULTS_TSV)
+    if current_count <= last_count:
+        return last_count
+    try:
+        with open(_RESULTS_TSV) as f:
+            header = f.readline().strip().split("\t")
+            all_lines = f.readlines()
+        # Push only new lines (skip header which is line 0)
+        new_lines = all_lines[max(0, last_count - 1):]
+        for line in new_lines:
+            cols = line.strip().split("\t")
+            if len(cols) < 8:
+                continue
+            row = dict(zip(header, cols))
+            _dashboard.push_experiment({
+                "id": row.get("commit", ""),
+                "tier": row.get("tier", "local"),
+                "val_bpb": float(row["val_bpb"]) if row.get("val_bpb") and row["val_bpb"] not in ("", "n/a") else None,
+                "artifact_bytes": int(row["artifact_bytes"]) if row.get("artifact_bytes") and row["artifact_bytes"] not in ("", "0") else None,
+                "memory_gb": None,
+                "status": row.get("status", "keep"),
+                "promoted": row.get("promoted", "no") == "yes",
+                "cost_usd": float(row.get("cost_usd", "0") or "0"),
+                "description": row.get("description", ""),
+                "source_item": row.get("source_item", ""),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+        if new_lines:
+            print(f"[orchestrate] Synced {len(new_lines)} new experiment(s) to dashboard")
+    except Exception as e:
+        print(f"[orchestrate] Dashboard sync error: {e}")
+    return current_count
+
+
+def _sync_new_research_to_dashboard(last_count: int) -> int:
+    """Push any new lines in graded_cache.jsonl to the dashboard. Returns new line count."""
+    graded_path = Path("graded_cache.jsonl")
+    current_count = _count_file_lines(graded_path)
+    if current_count <= last_count:
+        return last_count
+    try:
+        with open(graded_path) as f:
+            all_lines = f.readlines()
+        new_lines = all_lines[last_count:]
+        items = []
+        for line in new_lines:
+            item = json.loads(line)
+            items.append({
+                "id": item.get("id", ""),
+                "score": item.get("score", 0),
+                "tier": item.get("tier", "C"),
+                "bpb_impact": item.get("score_breakdown", {}).get("bpb_impact", 0),
+                "size_compat": item.get("score_breakdown", {}).get("size_compatibility", 0),
+                "time_compat": item.get("score_breakdown", {}).get("time_compatibility", 0),
+                "implement": item.get("score_breakdown", {}).get("implementability", 0),
+                "novelty": item.get("score_breakdown", {}).get("novelty", 0),
+                "summary": item.get("agent_summary", ""),
+                "flags": item.get("flags", []),
+                "verified": False,
+                "graded_at": item.get("graded_at", datetime.now(timezone.utc).isoformat()),
+                "verified_at": None,
+            })
+        if items:
+            for i in range(0, len(items), 10):
+                _dashboard.push_research(items[i:i+10])
+            print(f"[orchestrate] Synced {len(items)} new research item(s) to dashboard")
+    except Exception as e:
+        print(f"[orchestrate] Dashboard research sync error: {e}")
+    return current_count
+
+
 def _run_supervisor() -> None:
     """Main loop: spawn agents, monitor health, poll promotion queue."""
     experiment_proc = _launch_agent(_EXPERIMENT_AGENT_PROMPT, "experiment-agent")
@@ -493,6 +573,8 @@ def _run_supervisor() -> None:
           f"{_POLL_INTERVAL_SECONDS}s.")
 
     _heartbeat_counter = 0
+    _results_line_count = _count_file_lines(_RESULTS_TSV)
+    _graded_line_count = _count_file_lines(Path("graded_cache.jsonl"))
 
     while True:
         # Health check: restart agents that have exited
@@ -540,6 +622,10 @@ def _run_supervisor() -> None:
                 sota_bpb=_read_sota_bpb(),
                 pipeline_counts=_read_pipeline_counts(),
             )
+
+        # Sync new results/research to dashboard
+        _results_line_count = _sync_new_results_to_dashboard(_results_line_count)
+        _graded_line_count = _sync_new_research_to_dashboard(_graded_line_count)
 
         # Poll promotion queue
         promotions = _read_pending_promotions()
