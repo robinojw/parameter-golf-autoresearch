@@ -2111,17 +2111,25 @@ def eggroll_refine(
         s = quant_obj["scales"][name]     # float16 tensor on CPU
         current_code = q.reshape(-1)[flat_idx].item()
 
-        # Decode position
+        # Decode position and get scale
         if q.ndim == 3:
             sl = flat_idx // (q.shape[1] * q.shape[2])
             rc = flat_idx % (q.shape[1] * q.shape[2])
             row = rc // q.shape[2]
+            col = rc % q.shape[2]
             scale = s[sl, row].item()
+            def _set_q(v): q[sl, row, col] = v
+            def _mod_param(d): param.data[sl, row, col] += d
         elif q.ndim == 2:
             row = flat_idx // q.shape[1]
+            col = flat_idx % q.shape[1]
             scale = s[row].item()
+            def _set_q(v): q[row, col] = v
+            def _mod_param(d): param.data[row, col] += d
         else:
-            scale = s.reshape(-1)[flat_idx].item() if s.numel() > 1 else s.item()
+            scale = s.item() if s.numel() == 1 else s.reshape(-1)[flat_idx].item()
+            def _set_q(v): q.reshape(-1)[flat_idx] = v
+            def _mod_param(d): param.data.reshape(-1)[flat_idx] += d
 
         # Get the model param tensor (same name as quant key) on device
         param = base_model.get_parameter(name)
@@ -2133,10 +2141,9 @@ def eggroll_refine(
             if not (-31 <= new_code <= 31):
                 continue
             float_delta = delta * scale
-            # Apply delta to ONE element in the float model param
-            param.data.reshape(-1)[flat_idx] += float_delta
+            _mod_param(float_delta)
             loss = _calib_loss()
-            param.data.reshape(-1)[flat_idx] -= float_delta  # revert
+            _mod_param(-float_delta)  # revert
             if loss < best_loss:
                 best_loss = loss
                 best_delta = delta
@@ -2144,8 +2151,8 @@ def eggroll_refine(
         if best_delta != 0:
             # Accept improvement: update both float model and quant_obj
             float_delta = best_delta * scale
-            param.data.reshape(-1)[flat_idx] += float_delta
-            q.reshape(-1)[flat_idx] = current_code + best_delta
+            _mod_param(float_delta)
+            _set_q(current_code + best_delta)
             current_loss = best_loss
             improvements += 1
 
