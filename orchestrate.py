@@ -121,6 +121,7 @@ _POLL_INTERVAL_SECONDS = 10
 _AGENT_HEALTH_CHECK_SECONDS = 10
 _MAX_RESTART_ATTEMPTS = 5
 _RESTART_BACKOFF_SECONDS = 5
+_AGENT_MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-4-6")
 
 # ---------------------------------------------------------------------------
 # Budget
@@ -164,6 +165,7 @@ def _launch_agent(prompt_path: Path, name: str) -> subprocess.Popen:
         "-p", prompt_content + venv_note,
         "--output-format", "stream-json",
         "--verbose",
+        "--model", _AGENT_MODEL,
         "--permission-mode", "bypassPermissions",
     ]
 
@@ -317,6 +319,12 @@ def _handle_promotion(request: dict) -> None:
         template_id=os.getenv("RUNPOD_TEMPLATE_ID", "y5cejece4j"),
     )
 
+    # Save a snapshot of the script being submitted
+    run_dir = Path("runpod_results") / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    import shutil
+    shutil.copy2("train_gpt.py", run_dir / "train_gpt.py")
+
     pod_id = client.launch_pod()
     try:
         ssh = client.wait_for_ready(pod_id)
@@ -324,7 +332,12 @@ def _handle_promotion(request: dict) -> None:
         t0 = time.time()
         exit_code = sync.run_remote_training(ssh, run_id=run_id)
         duration = time.time() - t0
-        sync.pull_from_pod(ssh, [f"logs/{run_id}.txt", "run.log"])
+        sync.pull_from_pod(ssh, [
+            f"logs/{run_id}.txt",
+            "run.log",
+            "model.zst",       # compressed artifact
+            "model.bin",       # uncompressed artifact (fallback)
+        ], local_dir=str(run_dir))
     finally:
         client.terminate_pod(pod_id)
 
@@ -334,7 +347,7 @@ def _handle_promotion(request: dict) -> None:
         _append_result(run_id, "runpod", {}, cost, status="crash")
         return
 
-    result = parse_run_log("runpod_results/run.log")
+    result = parse_run_log(str(run_dir / "run.log"))
     cost = budget.record_run(run_id, duration)
     _append_result(run_id, "runpod", result, cost)
     print(f"[orchestrate] Done. val_bpb={result.get(_KEY_VAL_BPB)} cost=${cost:.2f}")
