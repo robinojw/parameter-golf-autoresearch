@@ -82,6 +82,20 @@ def run_remote_training(
     extra_env = ""
     if env_vars:
         extra_env = " ".join(f"{k}={shlex.quote(str(v))}" for k, v in env_vars.items()) + " "
+    # Use pod's pre-installed full dataset (195 shards / 19.5B tokens) if available.
+    # Falls back to the 1-shard data we pushed if the pod doesn't have it.
+    # Use pod's pre-installed full dataset (195 shards / 19.5B tokens) if available.
+    # The template may put the dataset at /data/ or /workspace/data/.
+    # We check for shard 000001 (not 000000 which we also push) to confirm full dataset.
+    # Falls back to the 1-shard data we pushed if not found.
+    _data_detect = (
+        f"_dp={_wd}/data/datasets/fineweb10B_sp1024; "
+        f"for _try in /data/datasets/fineweb10B_sp1024 /workspace/data/datasets/fineweb10B_sp1024; do "
+        f"if ls $_try/fineweb_train_000001.bin 2>/dev/null; then _dp=$_try; break; fi; "
+        f"done; "
+        f"export DATA_PATH=$_dp; "
+        f"echo \"DATA_PATH=$DATA_PATH (train shards: $(ls $DATA_PATH/fineweb_train_*.bin 2>/dev/null | wc -l))\"; "
+    )
     train_cmd = (
         f"cd {_wd} && "
         f"_copy_artifacts() {{ "
@@ -92,6 +106,7 @@ def run_remote_training(
         f"}}; "
         f"trap _copy_artifacts EXIT; "
         f"pip install -q zstandard 2>/dev/null; "
+        f"{_data_detect}"
         f"{extra_env}RUN_ID={shlex.quote(run_id)} "
         f"torchrun --standalone --nproc_per_node={nproc} train_gpt.py"
     )
