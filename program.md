@@ -143,6 +143,27 @@ Already on the leaderboard — build on these, don't repeat them:
 
 ## Strategy
 <!-- STRATEGY_START -->
+## 2026-03-31 (Cycle 25 — Cycle 24 crashed: EGGROLL bug + HF path wrong + zstd install silent fail)
+
+**Cycle 24 run (runpod_b80e17d_03310524) CRASHED:**
+- val_bpb at step 4000: **1.2821** (before overfitting with 1 shard)
+- Crashed at EGGROLL: `RuntimeError: shape '[-1, 2048]' is invalid for input of size 1024`
+  - Root cause: `_egg_calib` passed `global_tokens=8192`, but `train_loader.world_size=8`, so `local_tokens = 8192 // 8 = 1024 < seq_len=2048`. Fix: use `4 * seq_len * world_size = 65536` as global_tokens.
+- HF dataset still 1 shard: `download_data.py` used wrong subfolder `"datasets/fineweb10B_sp1024"`. Correct is `"datasets/datasets/fineweb10B_sp1024"`. Fix: switched to `cached_challenge_fineweb.py --train-shards 32`.
+- zstandard still not installed: `pip install -q zstandard 2>/dev/null` silently failed. Fix: use `python3 -m pip install -q zstandard`.
+
+**Three bugs fixed (commit pending):**
+1. EGGROLL `_egg_calib` token count: `min(786432, 8192)` → `4 * seq_len * world_size`
+2. HF download: `download_data.py` → `cached_challenge_fineweb.py --train-shards 32`
+3. pip: `pip install` → `python3 -m pip install` (no stderr suppression)
+
+**Priority stack (Cycle 25):**
+1. **Retry with all fixes** — same config: TTT_ENABLED=1 TTT_EPOCHS=30 WARMDOWN_ITERS=4000 EGGROLL_ENABLED=1
+2. **Verify dataset** — logs should show `train shards: 32` and `LOADER_MODE=coprime`
+3. **Verify artifact size** — `gptq:saved ... total_artifact=` should be ≤ 16MB with zstd-22
+4. **After success** — analyze TTT + EGGROLL gains, plan ResidLambdas (RESID_MIX_X0_INIT=0.1)
+
+---
 ## 2026-03-31 (Cycle 24 — H100 baseline result: 1.3499 bpb; enable TTT + zstd-22)
 
 **H100 BASELINE COMPLETE (run: runpod_b80e17d_03310406):**

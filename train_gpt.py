@@ -2636,8 +2636,9 @@ def main() -> None:
             if args.eggroll_enabled:
                 t_egg = time.perf_counter()
                 def _egg_calib():
+                    # Need global_tokens s.t. local_tokens = global // world_size >= 4 * seq_len
                     return train_loader.next_batch(
-                        min(args.train_batch_tokens, 4 * args.train_seq_len),
+                        4 * args.train_seq_len * train_loader.world_size,
                         args.train_seq_len, 1,
                     )
                 n_improvements = eggroll_refine(
