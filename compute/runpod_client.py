@@ -3,6 +3,7 @@
 Pod lifecycle via https://rest.runpod.io/v1/pods.
 SSH via direct public IP (not the RunPod proxy).
 """
+
 from __future__ import annotations
 
 import ast
@@ -34,6 +35,12 @@ _HTTP_TIMEOUT = 30
 _HTTP_RETRIES = 3
 _HTTP_BACKOFF_BASE = 1  # seconds, doubles each retry
 _PREFLIGHT_TIMEOUT_SECONDS = 30
+
+# HTTP-based results polling (git-clone workflow)
+_RESULTS_HTTP_PORT = 18080
+_RESULTS_POLL_INTERVAL = 30
+_RESULTS_POLL_TIMEOUT = 2700  # 45 min max (training is 600s + overhead)
+_GIT_REPO = "robinojw/parameter-golf-autoresearch"
 
 _SSH_BIN = "ssh"
 _PORT_FLAG = "-p"
@@ -250,9 +257,7 @@ class RunPodClient:
                 ssh_conn = f"root@{public_ip} {_PORT_FLAG} {ssh_port}"
                 break
 
-            print(
-                f"Pod {pod_id} status={status} ip={public_ip or 'pending'}..."
-            )
+            print(f"Pod {pod_id} status={status} ip={public_ip or 'pending'}...")
             time.sleep(_POLL_INTERVAL)
         else:
             raise PodReadyTimeoutError(
@@ -308,6 +313,179 @@ class RunPodClient:
             )
             return result.returncode == 0
         except (subprocess.TimeoutExpired, Exception):
+            return False
+
+    def _build_training_script(self, run_id: str) -> str:
+        """Build a self-contained bash training script for baked-in pod execution."""
+        return (
+            "#!/bin/bash\n"
+            "set -e\n"
+            'echo "PGOLF_START run_id=$RUN_ID"\n'
+            "\n"
+            "python3 -m pip install -q zstandard --break-system-packages 2>&1 | grep -v 'already satisfied' || true\n"
+            "\n"
+            'git clone --depth 1 --branch "$GIT_BRANCH" '
+            '"https://${GITHUB_TOKEN}@github.com/' + _GIT_REPO + '.git" '
+            "/workspace/repo\n"
+            "cp /workspace/repo/train_gpt.py /workspace/train_gpt.py\n"
+            "cp -r /workspace/repo/data /workspace/data 2>/dev/null || true\n"
+            "\n"
+            "_dp=/workspace/parameter-golf-autoresearch/data/datasets/fineweb10B_sp1024\n"
+            "for _try in \\\n"
+            "    /data/datasets/fineweb10B_sp1024 \\\n"
+            "    /workspace/data/datasets/fineweb10B_sp1024 \\\n"
+            "    /workspace/datasets/fineweb10B_sp1024 \\\n"
+            "    /opt/datasets/fineweb10B_sp1024; do\n"
+            '    if ls "$_try"/fineweb_train_000001.bin 2>/dev/null; then _dp=$_try; break; fi\n'
+            "done\n"
+            "\n"
+            'if [ "$_dp" = "/workspace/parameter-golf-autoresearch/data/datasets/fineweb10B_sp1024" ]; then\n'
+            '    echo "Full dataset not pre-installed, downloading 32 shards from HuggingFace..."\n'
+            "    cd /workspace/repo/data && python3 cached_challenge_fineweb.py --train-shards 32 || true\n"
+            "    cd /workspace\n"
+            "fi\n"
+            "\n"
+            "export DATA_PATH=$_dp\n"
+            '_nshards=$(ls "$DATA_PATH"/fineweb_train_*.bin 2>/dev/null | wc -l)\n'
+            'echo "DATA_PATH=$DATA_PATH (train shards: $_nshards)"\n'
+            'if [ "$_nshards" -ge 4 ]; then export LOADER_MODE=coprime; '
+            "else export LOADER_MODE=sequential; fi\n"
+            'echo "LOADER_MODE=$LOADER_MODE"\n'
+            "\n"
+            "cd /workspace\n"
+            "set +e\n"
+            "RUN_ID=$RUN_ID torchrun --standalone --nproc_per_node=${NPROC:-8} train_gpt.py 2>&1 | tee /workspace/run.log\n"
+            "EXIT_CODE=${PIPESTATUS[0]}\n"
+            "set -e\n"
+            'echo "PGOLF_TRAINING_EXIT_CODE=$EXIT_CODE"\n'
+            "\n"
+            "mkdir -p /workspace/results\n"
+            "cp /workspace/run.log /workspace/results/ 2>/dev/null || true\n"
+            "cp /workspace/final_model.int6.zst /workspace/results/model.zst 2>/dev/null || true\n"
+            "cp /workspace/final_model.pt /workspace/results/model.bin 2>/dev/null || true\n"
+            'echo "{\\"exit_code\\": $EXIT_CODE, \\"completed\\": true}" > /workspace/results/results.json\n'
+            "\n"
+            "cd /workspace/results\n"
+            'echo "PGOLF_HTTP_READY port=' + str(_RESULTS_HTTP_PORT) + '"\n'
+            "python3 -m http.server " + str(_RESULTS_HTTP_PORT) + " &\n"
+            "\n"
+            "sleep 600\n"
+        )
+
+    def create_training_pod(
+        self,
+        run_id: str,
+        git_branch: str,
+        env_vars: dict[str, str] | None = None,
+        gpu_count: int = _DEFAULT_GPU_COUNT,
+        gpu_type: str = _DEFAULT_GPU_TYPE,
+    ) -> str:
+        """Create a pod that runs training autonomously via git-clone (no SSH needed)."""
+        pub_key = _find_ssh_public_key()
+        startup_script = self._build_training_script(run_id)
+
+        env: dict[str, str] = {}
+        if pub_key:
+            env["PUBLIC_KEY"] = pub_key
+
+        github_token = os.environ.get("GITHUB_TOKEN", "")
+        if github_token:
+            env["GITHUB_TOKEN"] = github_token
+        env["GIT_BRANCH"] = git_branch
+        env["RUN_ID"] = run_id
+        env["NPROC"] = str(gpu_count)
+
+        if env_vars:
+            env.update(env_vars)
+
+        body = {
+            "name": f"pgolf-{run_id}",
+            "imageName": "runpod/parameter-golf:latest",
+            "gpuTypeIds": [gpu_type],
+            "gpuCount": gpu_count,
+            "templateId": self.template_id,
+            "volumeInGb": _DEFAULT_VOLUME_GB,
+            "ports": ["22/tcp", f"{_RESULTS_HTTP_PORT}/http"],
+            "env": env,
+            "dockerEntrypoint": ["/bin/bash", "-c"],
+            "dockerStartCmd": [startup_script],
+        }
+
+        result = _api_request("POST", "/pods", self.api_key, json=body)
+        pod_id = result["id"]
+        self._active_pods.add(pod_id)
+        print(
+            f"Launched training pod {pod_id} ({gpu_count}x {gpu_type}, branch={git_branch})"
+        )
+        return pod_id
+
+    def _results_url(self, pod_id: str, filename: str = "") -> str:
+        base = f"https://{pod_id}-{_RESULTS_HTTP_PORT}.proxy.runpod.net"
+        if filename:
+            return f"{base}/{filename}"
+        return base
+
+    def wait_for_results(
+        self,
+        pod_id: str,
+        timeout_seconds: int = _RESULTS_POLL_TIMEOUT,
+    ) -> dict:
+        """Poll the HTTP results endpoint until training completes. Returns results dict."""
+        url = self._results_url(pod_id, "results.json")
+        start = time.time()
+        last_status = ""
+
+        while time.time() - start < timeout_seconds:
+            try:
+                resp = requests.get(url, timeout=_HTTP_TIMEOUT)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("completed"):
+                        print(f"Training completed: exit_code={data.get('exit_code')}")
+                        return data
+                new_status = f"HTTP {resp.status_code}"
+            except requests.ConnectionError:
+                new_status = "connection_error"
+            except requests.Timeout:
+                new_status = "timeout"
+            except requests.RequestException as exc:
+                new_status = f"error: {exc}"
+
+            if new_status != last_status:
+                elapsed = int(time.time() - start)
+                print(f"  Polling {pod_id} results: {new_status} ({elapsed}s elapsed)")
+                last_status = new_status
+
+            time.sleep(_RESULTS_POLL_INTERVAL)
+
+        raise PodReadyTimeoutError(
+            f"Training results not available after {timeout_seconds}s",
+            pod_id=pod_id,
+        )
+
+    def download_result_file(
+        self,
+        pod_id: str,
+        remote_filename: str,
+        local_path: str,
+    ) -> bool:
+        """Download a file from the pod's HTTP results server. Returns True if successful."""
+        url = self._results_url(pod_id, remote_filename)
+        try:
+            resp = requests.get(url, timeout=120, stream=True)
+            if resp.status_code == 404:
+                print(f"  Result file not found: {remote_filename}")
+                return False
+            resp.raise_for_status()
+            pathlib.Path(local_path).parent.mkdir(parents=True, exist_ok=True)
+            with open(local_path, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                    f.write(chunk)
+            size_mb = pathlib.Path(local_path).stat().st_size / (1024 * 1024)
+            print(f"  Downloaded {remote_filename} ({size_mb:.1f} MB)")
+            return True
+        except requests.RequestException as exc:
+            print(f"  Failed to download {remote_filename}: {exc}")
             return False
 
     def _cleanup_all(self) -> None:
