@@ -25,7 +25,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 from compute.dashboard import DashboardPusher
 
@@ -121,7 +121,9 @@ _POLL_INTERVAL_SECONDS = 10
 _AGENT_HEALTH_CHECK_SECONDS = 10
 _MAX_RESTART_ATTEMPTS = 5
 _RESTART_BACKOFF_SECONDS = 5
-_AGENT_MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-4-6")
+_AGENT_MODEL = os.environ.get("AGENT_MODEL", "global.anthropic.claude-opus-4-6-v1")
+_RESEARCH_QUEUE = Path("research_queue.jsonl")
+_RESEARCH_ON_DEMAND = os.environ.get("RESEARCH_ON_DEMAND", "1").lower() in ("1", "true", "yes")
 
 # ---------------------------------------------------------------------------
 # Budget
@@ -161,7 +163,7 @@ def _launch_agent(prompt_path: Path, name: str) -> subprocess.Popen:
         )
 
     cmd = [
-        "claude",
+        "quarry", "claude",
         "-p", prompt_content + venv_note,
         "--output-format", "stream-json",
         "--verbose",
@@ -269,8 +271,11 @@ def _clear_promotion_queue() -> None:
 
 
 def _handle_promotion(request: dict) -> None:
-    """Process a single promotion request: budget check, threshold, launch RunPod."""
-    from compute.runpod_client import RunPodClient
+    """Process a single promotion request: preflight, budget, threshold, launch RunPod."""
+    from compute.runpod_client import (
+        RunPodClient, RunPodError, PreflightError,
+        verify_training_script,
+    )
     from compute import sync
     from compute.threshold import compute_promotion_threshold, check_adaptive_fallback
     from research.experiments import get_current_best_bpb
@@ -312,7 +317,14 @@ def _handle_promotion(request: dict) -> None:
                 print(f"[orchestrate] BLOCKED by threshold: {candidate_bpb:.4f} >= {required_bpb:.4f}")
                 return
 
-    # 3. Launch RunPod
+    # 3. Preflight verification — catch errors before spending credits
+    try:
+        verify_training_script("train_gpt.py")
+    except PreflightError as exc:
+        print(f"[orchestrate] BLOCKED by preflight ({exc.stage}): {exc}")
+        return
+
+    # 4. Launch RunPod
     run_id = f"runpod_{commit_hash[:_COMMIT_SHORT_LEN]}_{time.strftime('%m%d%H%M')}"
     client = RunPodClient(
         api_key=os.environ["RUNPOD_API_KEY"],
@@ -325,8 +337,9 @@ def _handle_promotion(request: dict) -> None:
     import shutil
     shutil.copy2("train_gpt.py", run_dir / "train_gpt.py")
 
-    pod_id = client.launch_pod()
+    pod_id: str | None = None
     try:
+        pod_id = client.create_pod()
         ssh = client.wait_for_ready(pod_id)
         sync.push_to_pod(ssh, ["train_gpt.py", "download_data.py", "data"])
         t0 = time.time()
@@ -344,8 +357,16 @@ def _handle_promotion(request: dict) -> None:
         sync.pull_from_pod(ssh, [f"logs/{run_id}.txt", "run.log"], local_dir=str(run_dir), optional=True)
         if exit_code == 0:
             sync.pull_from_pod(ssh, ["model.zst", "model.bin"], local_dir=str(run_dir), optional=True)
+    except RunPodError as exc:
+        print(f"[orchestrate] RunPod error ({type(exc).__name__}): {exc}")
+        if pod_id:
+            client.terminate_pod(pod_id)
+        cost = budget.record_run(run_id, 0)
+        _append_result(run_id, "runpod", {}, cost, status="crash")
+        return
     finally:
-        client.terminate_pod(pod_id)
+        if pod_id:
+            client.terminate_pod(pod_id)
 
     if exit_code != 0:
         print(f"[orchestrate] Training failed with exit code {exit_code}")
@@ -554,7 +575,8 @@ def _sync_new_research_to_dashboard(last_count: int) -> int:
 def _run_supervisor() -> None:
     """Main loop: spawn agents, monitor health, poll promotion queue."""
     experiment_proc = _launch_agent(_EXPERIMENT_AGENT_PROMPT, "experiment-agent")
-    research_proc = _launch_agent(_RESEARCH_AGENT_PROMPT, "research-agent")
+    research_proc = None if _RESEARCH_ON_DEMAND else _launch_agent(_RESEARCH_AGENT_PROMPT, "research-agent")
+    _research_queue_lines = _count_file_lines(_RESEARCH_QUEUE)
 
     experiment_restarts = 0
     research_restarts = 0
@@ -562,7 +584,8 @@ def _run_supervisor() -> None:
     def _cleanup(signum=None, frame=None):
         print("\n[orchestrate] Shutting down...")
         _terminate_agent(experiment_proc, "experiment-agent")
-        _terminate_agent(research_proc, "research-agent")
+        if research_proc is not None:
+            _terminate_agent(research_proc, "research-agent")
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, _cleanup)
@@ -598,35 +621,42 @@ def _run_supervisor() -> None:
             time.sleep(_RESTART_BACKOFF_SECONDS if rc != 0 else 5)
             experiment_proc = _launch_agent(_EXPERIMENT_AGENT_PROMPT, "experiment-agent")
 
-        if not _check_agent_alive(research_proc):
+        if research_proc is not None and not _check_agent_alive(research_proc):
             rc = getattr(research_proc, '_exit_code', -1)
-            if rc != 0:
-                research_restarts += 1
-            if research_restarts > _MAX_RESTART_ATTEMPTS:
-                print("[orchestrate] Research agent exceeded max crash restarts. Stopping.")
-                _cleanup()
-            label = "cycle complete" if rc == 0 else f"crashed ({research_restarts}/{_MAX_RESTART_ATTEMPTS})"
-            print(f"[orchestrate] Restarting research-agent ({label})...")
-            time.sleep(_RESTART_BACKOFF_SECONDS if rc != 0 else 5)
-            research_proc = _launch_agent(_RESEARCH_AGENT_PROMPT, "research-agent")
+            if _RESEARCH_ON_DEMAND:
+                label = "cycle complete" if rc == 0 else "crashed"
+                print(f"[orchestrate] Research agent finished ({label}). Returning to experiment-only.")
+                research_proc = None
+            else:
+                if rc != 0:
+                    research_restarts += 1
+                if research_restarts > _MAX_RESTART_ATTEMPTS:
+                    print("[orchestrate] Research agent exceeded max crash restarts. Stopping.")
+                    _cleanup()
+                label = "cycle complete" if rc == 0 else f"crashed ({research_restarts}/{_MAX_RESTART_ATTEMPTS})"
+                print(f"[orchestrate] Restarting research-agent ({label})...")
+                time.sleep(_RESTART_BACKOFF_SECONDS if rc != 0 else 5)
+                research_proc = _launch_agent(_RESEARCH_AGENT_PROMPT, "research-agent")
 
         _heartbeat_counter += 1
         if _heartbeat_counter % 10 == 0:
-            _dashboard.push_heartbeat(
-                statuses=[
+            _agent_statuses = [
                     {
                         "agent": "experiment",
                         "status": "running" if _check_agent_alive(experiment_proc) else "crashed",
                         "last_activity": datetime.now(timezone.utc).isoformat(),
                         "restart_count": experiment_restarts,
                     },
-                    {
+                ]
+            if research_proc is not None:
+                _agent_statuses.append({
                         "agent": "research",
                         "status": "running" if _check_agent_alive(research_proc) else "crashed",
                         "last_activity": datetime.now(timezone.utc).isoformat(),
                         "restart_count": research_restarts,
-                    },
-                ],
+                    })
+            _dashboard.push_heartbeat(
+                statuses=_agent_statuses,
                 sota_bpb=_read_sota_bpb(),
                 pipeline_counts=_read_pipeline_counts(),
             )
@@ -655,6 +685,14 @@ def _run_supervisor() -> None:
                     _budget_mtime = mtime
                 except Exception:
                     pass
+
+        # Poll research queue — spawn research agent on demand
+        if _RESEARCH_ON_DEMAND and research_proc is None:
+            new_lines = _count_file_lines(_RESEARCH_QUEUE)
+            if new_lines > _research_queue_lines:
+                print(f"[orchestrate] Research queue has {new_lines - _research_queue_lines} new request(s). Spawning research agent...")
+                _research_queue_lines = new_lines
+                research_proc = _launch_agent(_RESEARCH_AGENT_PROMPT, "research-agent")
 
         # Poll promotion queue
         promotions = _read_pending_promotions()
