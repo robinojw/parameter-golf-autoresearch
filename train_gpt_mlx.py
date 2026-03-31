@@ -1,10 +1,11 @@
-"""MLX adaptation of the Parameter Golf SOTA (PR #1089, 1.1091 bpb).
+"""MLX adaptation of the Parameter Golf stack (Rascal/PR #1120 base, 1.1099 bpb).
 
 Architecture: 11L 512d 8H 4KV, GQA, Partial RoPE (16/64), RMSNorm,
-LeakyReLU(0.3)^2, XSA-all, EngramLite, SmearGate, U-Net skips (sigmoid-gated),
-ValueEmbedding, LN Scale, logit softcap, tied embeddings.
+LeakyReLU(0.75)^2, XSA-all (11L), EngramLite, SmearGate, U-Net skips (sigmoid-gated),
+ValueEmbedding, LN Scale, logit softcap, tied embeddings, coprime-stride loader.
 
-Optimizer: AdamW (Muon not available on MLX).
+Optimizer: Standard NS5 Muon (Parallel Muon + AdamW). Turbo-Muon removed —
+confirmed +0.0018 BPB worse at H100 scale and over 16MB (PR #1105 negative result).
 Purpose: directional signal only. val_bpb NOT the challenge score.
 """
 import glob
@@ -42,7 +43,7 @@ LOGIT_SOFTCAP = float(os.getenv("LOGIT_SOFTCAP", "30.0"))
 ROPE_BASE = float(os.getenv("ROPE_BASE", "10000.0"))
 ROPE_DIMS = int(os.getenv("ROPE_DIMS", "16"))
 QK_GAIN_INIT = float(os.getenv("QK_GAIN_INIT", "4.0"))
-LEAKY_SLOPE = float(os.getenv("LEAKY_SLOPE", "0.3"))
+LEAKY_SLOPE = float(os.getenv("LEAKY_SLOPE", "0.75"))
 # EngramLite params
 NGRAM_BUCKETS = int(os.getenv("NGRAM_BUCKETS", "8192"))
 NGRAM_HEADS = int(os.getenv("NGRAM_HEADS", "2"))
@@ -659,36 +660,21 @@ MAX_VAL_TOKENS = int(os.getenv("MAX_VAL_TOKENS", "524288"))  # 512K tokens max f
 # ---------------------------------------------------------------------------
 
 def zeropower_via_ns(G: mx.array, steps: int = 5) -> mx.array:
-    """Turbo-Muon: AOL preconditioning + Polar Express 4-iter NS.
+    """Standard Newton-Schulz 5-step orthogonalization (Muon optimizer).
 
-    Coefficients from PR #1089 SOTA (1.1091 bpb). `steps` param unused.
-    AOL (Gershgorin row-sum scaling) replaces the first NS iteration;
-    the 4 Polar Express steps follow with per-iteration (a,b,c) triplets.
+    Uses cubic NS iteration: X_{k+1} = (15/8)X - (5/4)(XX^T)X + (3/8)(XX^T)^2 X
+    Converges to the polar factor of G. Used by Rascal (1.1099 bpb, PR #1120).
+    Turbo-Muon (AOL + Polar Express) was removed: +0.0018 BPB worse at H100 scale
+    and exceeds 16MB artifact budget (PR #1105 negative result).
     """
-    POLAR_COEFFS = [
-        (4.107, -2.948, 0.545),
-        (3.949, -2.909, 0.552),
-        (3.318, -2.488, 0.510),
-        (2.301, -1.669, 0.419),
-    ]
-    eps = 1e-8
     norm = mx.sqrt(mx.sum(G * G)) + 1e-7
     X = G / norm
     transposed = X.shape[0] > X.shape[1]
     if transposed:
         X = X.T
-    # AOL preconditioning: scale rows by 1/sqrt(row abs-sum of A)
-    A = X @ X.T
-    s = 1.0 / (mx.sqrt(mx.sum(mx.abs(A), axis=1)) + eps)
-    X = s[:, None] * X
-    # 4 Polar Express NS iterations with per-step coefficients
-    for a, b, c in POLAR_COEFFS:
+    for _ in range(steps):
         A = X @ X.T
-        B = b * A + c * (A @ A)
-        X = a * X + B @ X
-    # Post-NS: row-then-column normalization
-    X = X / (mx.sqrt(mx.sum(X * X, axis=1, keepdims=True)) + eps)
-    X = X / (mx.sqrt(mx.sum(X * X, axis=0, keepdims=True)) + eps)
+        X = 15.0 / 8.0 * X - 5.0 / 4.0 * (A @ X) + 3.0 / 8.0 * (A @ (A @ X))
     if transposed:
         X = X.T
     return X
