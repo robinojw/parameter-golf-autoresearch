@@ -581,6 +581,8 @@ def _run_supervisor() -> None:
         "technique_map": Path("technique_map.json"),
     }
     _doc_mtimes = {k: v.stat().st_mtime if v.exists() else 0 for k, v in _DOC_FILES.items()}
+    _BUDGET_FILE = Path("budget.json")
+    _budget_mtime = _BUDGET_FILE.stat().st_mtime if _BUDGET_FILE.exists() else 0
 
     while True:
         # Health check: restart agents that have exited
@@ -638,6 +640,21 @@ def _run_supervisor() -> None:
                 if mtime > _doc_mtimes.get(doc_key, 0):
                     _dashboard.push_doc(doc_key, doc_path.read_text())
                     _doc_mtimes[doc_key] = mtime
+        # Sync budget
+        if _BUDGET_FILE.exists():
+            mtime = _BUDGET_FILE.stat().st_mtime
+            if mtime > _budget_mtime:
+                try:
+                    data = json.loads(_BUDGET_FILE.read_text())
+                    _dashboard.push_budget({
+                        "total_credits": data.get("total_credits", 0),
+                        "spent": data.get("spent", 0),
+                        "min_reserve": data.get("min_reserve", 0),
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                    _budget_mtime = mtime
+                except Exception:
+                    pass
 
         # Poll promotion queue
         promotions = _read_pending_promotions()

@@ -17,13 +17,23 @@
 	const width = ctx.width;
 	const height = ctx.height;
 
-	let linePath = $derived.by(() => {
-		const xs = $xScale;
-		const ys = $yScale;
+	let localData = $derived(chartData.filter((d) => d.tier === 'local'));
+	let runpodData = $derived(chartData.filter((d) => d.tier === 'runpod'));
+
+	let localPath = $derived.by(() => {
+		if (localData.length === 0) return '';
 		const gen = d3line<{ x: number; y: number }>()
-			.x((d) => xs(d.x))
-			.y((d) => ys(d.y));
-		return gen(chartData);
+			.x((d) => $xScale(d.x))
+			.y((d) => $yScale(d.y));
+		return gen(localData);
+	});
+
+	let runpodPath = $derived.by(() => {
+		if (runpodData.length === 0) return '';
+		const gen = d3line<{ x: number; y: number }>()
+			.x((d) => $xScale(d.x))
+			.y((d) => $yScale(d.y));
+		return gen(runpodData);
 	});
 </script>
 
@@ -70,15 +80,36 @@
 	/>
 {/each}
 
-<!-- Line -->
-<path d={linePath} fill="none" stroke="var(--on-surface)" stroke-width="1.5" />
-
-<!-- Dots -->
-{#each chartData as point}
+<!-- Local line + dots (dashed, muted) -->
+{#if localPath}
+	<path d={localPath} fill="none" stroke="var(--muted)" stroke-width="1" stroke-dasharray="4,3" />
+{/if}
+{#each localData as point}
 	<circle
 		cx={$xScale(point.x)}
 		cy={$yScale(point.y)}
 		r="3"
-		fill={point.tier === 'runpod' ? 'var(--on-surface)' : 'var(--muted)'}
+		fill="var(--muted)"
 	/>
 {/each}
+
+<!-- RunPod line + dots (solid, full contrast) -->
+{#if runpodPath}
+	<path d={runpodPath} fill="none" stroke="var(--on-surface)" stroke-width="2" />
+{/if}
+{#each runpodData as point}
+	<circle
+		cx={$xScale(point.x)}
+		cy={$yScale(point.y)}
+		r="4"
+		fill="var(--on-surface)"
+	/>
+{/each}
+
+<!-- Legend -->
+<g transform="translate({$width - 140}, 0)">
+	<line x1="0" x2="16" y1="6" y2="6" stroke="var(--muted)" stroke-width="1" stroke-dasharray="4,3" />
+	<text x="20" y="10" fill="var(--muted)" font-size="10">Local (MLX)</text>
+	<line x1="0" x2="16" y1="22" y2="22" stroke="var(--on-surface)" stroke-width="2" />
+	<text x="20" y="26" fill="var(--on-surface)" font-size="10">RunPod (H100)</text>
+</g>
