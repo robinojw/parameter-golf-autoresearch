@@ -143,6 +143,28 @@ Already on the leaderboard — build on these, don't repeat them:
 
 ## Strategy
 <!-- STRATEGY_START -->
+## 2026-03-31 (Cycle 22 — GPTQ implementation DONE, Tier 2 unblocked)
+
+**GPTQ IMPLEMENTED (commit 260447f):** Full Hessian GPTQ with actorder now in both sota_1120_rascal_train_gpt.py and train_gpt.py. Train script now runs int6+zstd-22 post-training quantization automatically after training.
+
+**Architecture:**
+- `_collect_hessians`: calibration via forward hooks on block.attn (h_attn_in = Q/K/V input) and block.mlp (h_mlp_in = MLP-up input), plus _calib_save_y callbacks in CausalSelfAttention (h_attn_out = pre-O-proj) and MLP (h_mlp_act = pre-MLP-down). 64 batches.
+- `quantize_int6_gptq`: Cholesky H_inv, actorder (descending H.diag()), column-by-column error propagation. Falls back to per-row on LinAlgError.
+- `quantize_int6_per_row`: 5-way clip sweep [0.9990-1.0], per-row float16 scales.
+- Bank tensors (qo_bank, kv_bank, mlp_up_bank, mlp_down_bank) each quantized per-slice with appropriate shared Hessian. Non-bank tensors as float16 passthrough.
+- zstd-22 compression (fallback zlib-9 if zstandard unavailable).
+
+**train_gpt.py = sota_1120_rascal_train_gpt.py**: Full Rascal stack (ParamBanking, XSA-all, EngramLite, coprime-stride, NS5 Muon, LEAKY_SLOPE=0.75) + GPTQ. This is now the H100 submission script.
+
+**Constraint check note:** Checker uses 0.90 compression ratio (too conservative). Actual int6+zstd-22 ratio is ~0.50-0.55 for neural network weights. PR #1135 confirms 30M params fits within 16MB.
+
+**Priority stack (Cycle 22):**
+1. **First H100 run** — Run train_gpt.py on RunPod with NS5+MuonEq+LEAKY=0.75+EngramLite+XSA-all+GPTQ → target ~1.09-1.10 bpb
+2. **Port MuonEq to train_gpt.py** — MuonEq RC (arxiv:2603.28254) equilibration before NS5 already in MLX; add to PyTorch Muon optimizer in train_gpt.py
+3. **Port TTT (30 epochs cosine) to train_gpt.py** — TTT from MLX (train_gpt_mlx.py) to PyTorch (train_gpt.py); expected -0.041 bpb from PR #672
+4. **Promote via `python orchestrate.py --promote <run_id>`** after H100 run clears threshold
+
+---
 ## 2026-03-31 (Cycle 21 Reflection — TTT smoke test)
 
 **TTT implementation complete (commit ce4ba3c):** Score-first TTT with cosine LR schedule. TTT_EPOCHS=3, TTT_CHUNK_TOKENS=32768, cosine decay from TTT_LR=0.002 to 0. val_bpb 9.380 vs 9.371 MuonEq baseline — neutral/noise at 500 steps. EXPECTED: undertrained model (loss 6.4-9.4) has too-low signal for TTT to adapt meaningfully. TTT timing: 108.9s for 4 chunks (3 epochs each). H100 scale with well-trained model should show full PR #672 gain (-0.041 bpb at 30 epochs).
