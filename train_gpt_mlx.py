@@ -75,6 +75,12 @@ EMA_EVAL_EVERY = int(os.getenv("EMA_EVAL_EVERY", "50"))  # force eval EMA every 
 COPRIME_LOADER = bool(int(os.getenv("COPRIME_LOADER", "1")))
 # WARMDOWN_ITERS: absolute count (0 = use WARMDOWN_FRAC fraction instead)
 WARMDOWN_ITERS = int(os.getenv("WARMDOWN_ITERS", "0"))
+# TTT (Test-Time Training) at eval time
+TTT_ENABLED = bool(int(os.getenv("TTT_ENABLED", "0")))
+TTT_LR = float(os.getenv("TTT_LR", "0.002"))
+TTT_EPOCHS = int(os.getenv("TTT_EPOCHS", "3"))
+TTT_CHUNK_TOKENS = int(os.getenv("TTT_CHUNK_TOKENS", "32768"))
+TTT_FREEZE_BLOCKS = int(os.getenv("TTT_FREEZE_BLOCKS", "2"))
 
 BATCH_SIZE = TRAIN_BATCH_TOKENS // TRAIN_SEQ_LEN
 LOG_2 = math.log(2)
@@ -751,6 +757,26 @@ def muon_apply(model, grads: dict, state: MuonState, lr: float, wd: float) -> No
     model.update(params)
 
 
+def _deep_copy_params(params):
+    if isinstance(params, mx.array):
+        return mx.array(params)
+    if isinstance(params, dict):
+        return {k: _deep_copy_params(v) for k, v in params.items()}
+    if isinstance(params, (list, tuple)):
+        return type(params)(_deep_copy_params(v) for v in params)
+    return params
+
+
+def _ema_update(ema, params, decay):
+    if isinstance(params, mx.array):
+        return decay * ema + (1 - decay) * params
+    if isinstance(params, dict):
+        return {k: _ema_update(ema[k], params[k], decay) for k in params}
+    if isinstance(params, (list, tuple)):
+        return type(params)(_ema_update(e, p, decay) for e, p in zip(ema, params))
+    return params
+
+
 def eval_val(model: GPT, val_tokens: mx.array, seq_len: int, batch_size: int) -> float:
     total_tokens = min(val_tokens.shape[0], MAX_VAL_TOKENS)
     usable = ((total_tokens - 1) // seq_len) * seq_len
@@ -770,6 +796,126 @@ def eval_val(model: GPT, val_tokens: mx.array, seq_len: int, batch_size: int) ->
         n_tokens = (end_seq - start_seq) * seq_len
         total_loss += loss.item() * n_tokens
         count += n_tokens
+    return total_loss / max(count, 1)
+
+
+def _tree_sgd(params, grads, lr: float):
+    """Recursively apply SGD: param = param - lr * grad."""
+    if isinstance(params, mx.array):
+        if isinstance(grads, mx.array):
+            return params - lr * grads
+        return params
+    if isinstance(params, dict):
+        return {k: _tree_sgd(params[k], grads.get(k) if isinstance(grads, dict) else None, lr) for k in params}
+    if isinstance(params, (list, tuple)):
+        gs = grads if isinstance(grads, (list, tuple)) else [None] * len(params)
+        return type(params)(_tree_sgd(p, g, lr) for p, g in zip(params, gs))
+    return params
+
+
+def eval_val_ttt(model: GPT, val_tokens: mx.array, seq_len: int, batch_size: int) -> float:
+    """Score-first TTT (Test-Time Training): fine-tune on each chunk then score.
+
+    For each chunk of TTT_CHUNK_TOKENS tokens:
+      1. Run TTT_EPOCHS gradient steps on the chunk (cosine LR schedule)
+      2. Score the chunk with the adapted model
+      3. Restore original weights before next chunk
+    First TTT_FREEZE_BLOCKS layers are not updated during TTT.
+    """
+    total_tokens = min(val_tokens.shape[0], MAX_VAL_TOKENS)
+    chunk_size = TTT_CHUNK_TOKENS
+
+    # Save original params for restore after each chunk
+    orig_params = _deep_copy_params(model.parameters())
+    mx.eval(orig_params)
+
+    # TTT gradient function (reuse training-style loss)
+    ttt_fn = nn.value_and_grad(model, lambda mdl, inp, tgt: cross_entropy(mdl(inp), tgt))
+
+    total_loss = 0.0
+    count = 0
+    n_chunks = 0
+    t0 = time.time()
+
+    for chunk_start in range(0, total_tokens - seq_len, chunk_size):
+        chunk_end = min(chunk_start + chunk_size, total_tokens - 1)
+        c_toks = val_tokens[chunk_start:chunk_end + 1]
+        n_toks = chunk_end - chunk_start
+        usable = (n_toks // seq_len) * seq_len
+        n_seqs = usable // seq_len
+        if n_seqs == 0:
+            continue
+
+        # Compute total TTT steps for cosine schedule
+        steps_per_epoch = max(n_seqs // batch_size, 1)
+        total_ttt_steps = TTT_EPOCHS * steps_per_epoch
+        global_step = 0
+
+        # Fine-tune on this chunk with cosine LR decay
+        for epoch in range(TTT_EPOCHS):
+            for b in range(0, n_seqs, batch_size):
+                b_end = min(b + batch_size, n_seqs)
+                bs = b_end - b
+                raw_s = b * seq_len
+                raw_e = raw_s + bs * seq_len + 1
+                local = c_toks[raw_s:raw_e]
+                if local.shape[0] < bs * seq_len + 1:
+                    break
+                x = local[:-1].reshape(bs, seq_len)
+                y = local[1:].reshape(bs, seq_len)
+
+                # Cosine LR: decays from TTT_LR to 0
+                cos_t = global_step / max(total_ttt_steps - 1, 1)
+                lr_t = TTT_LR * 0.5 * (1.0 + math.cos(math.pi * cos_t))
+
+                _, grads = ttt_fn(model, x, y)
+
+                # Apply SGD, skipping frozen blocks
+                cur = model.parameters()
+                new_params = {}
+                for k in cur:
+                    if k == 'blocks':
+                        new_blocks = []
+                        grads_blocks = grads.get('blocks', []) if isinstance(grads, dict) else []
+                        for i, blk_p in enumerate(cur['blocks']):
+                            if i < TTT_FREEZE_BLOCKS:
+                                new_blocks.append(blk_p)  # frozen
+                            else:
+                                blk_g = grads_blocks[i] if i < len(grads_blocks) else None
+                                new_blocks.append(_tree_sgd(blk_p, blk_g, lr_t))
+                        new_params['blocks'] = new_blocks
+                    else:
+                        g = grads.get(k) if isinstance(grads, dict) else None
+                        new_params[k] = _tree_sgd(cur[k], g, lr_t)
+
+                model.update(new_params)
+                mx.eval(model.parameters())
+                global_step += 1
+
+        # Score this chunk with adapted model
+        for b in range(0, n_seqs, batch_size):
+            b_end = min(b + batch_size, n_seqs)
+            bs = b_end - b
+            raw_s = b * seq_len
+            raw_e = raw_s + bs * seq_len + 1
+            local = c_toks[raw_s:raw_e]
+            if local.shape[0] < bs * seq_len + 1:
+                break
+            x = local[:-1].reshape(bs, seq_len)
+            y = local[1:].reshape(bs, seq_len)
+            logits = model(x)
+            loss = cross_entropy(logits, y)
+            mx.eval(loss)
+            total_loss += loss.item() * bs * seq_len
+            count += bs * seq_len
+
+        # Restore original weights before next chunk
+        model.update(orig_params)
+        mx.eval(model.parameters())
+        n_chunks += 1
+
+    ttt_secs = time.time() - t0
+    print(f"ttt: {n_chunks} chunks, {TTT_EPOCHS} epochs/chunk, {ttt_secs:.1f}s")
     return total_loss / max(count, 1)
 
 
@@ -846,24 +992,6 @@ def main() -> None:
     # EMA model state
     ema_params = None
 
-    def _deep_copy_params(params):
-        if isinstance(params, mx.array):
-            return mx.array(params)
-        if isinstance(params, dict):
-            return {k: _deep_copy_params(v) for k, v in params.items()}
-        if isinstance(params, (list, tuple)):
-            return type(params)(_deep_copy_params(v) for v in params)
-        return params
-
-    def _ema_update(ema, params, decay):
-        if isinstance(params, mx.array):
-            return decay * ema + (1 - decay) * params
-        if isinstance(params, dict):
-            return {k: _ema_update(ema[k], params[k], decay) for k in params}
-        if isinstance(params, (list, tuple)):
-            return type(params)(_ema_update(e, p, decay) for e, p in zip(ema, params))
-        return params
-
     t0 = time.time()
     val_loss = float("nan")
 
@@ -920,9 +1048,12 @@ def main() -> None:
         mx.eval(model.parameters())
         print("using EMA params for final eval")
 
-    # Final validation
+    # Final validation (with optional TTT)
     if val_tokens is not None:
-        val_loss = eval_val(model, val_tokens, TRAIN_SEQ_LEN, BATCH_SIZE)
+        if TTT_ENABLED:
+            val_loss = eval_val_ttt(model, val_tokens, TRAIN_SEQ_LEN, BATCH_SIZE)
+        else:
+            val_loss = eval_val(model, val_tokens, TRAIN_SEQ_LEN, BATCH_SIZE)
     elif math.isnan(val_loss):
         val_inputs, val_targets = get_batch_random(TRAIN_SEQ_LEN, BATCH_SIZE, VOCAB_SIZE)
         val_logits = model(val_inputs)
