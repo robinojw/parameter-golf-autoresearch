@@ -67,6 +67,7 @@ MUON_WD = float(os.getenv("MUON_WD", "0.04"))
 MUON_NS_STEPS = int(os.getenv("MUON_NS_STEPS", "5"))
 EMA_DECAY = float(os.getenv("EMA_DECAY", "0.995"))
 EMA_START = int(os.getenv("EMA_START", "100"))  # start EMA after step 100
+EMA_EVAL_EVERY = int(os.getenv("EMA_EVAL_EVERY", "50"))  # force eval EMA every N steps
 
 BATCH_SIZE = TRAIN_BATCH_TOKENS // TRAIN_SEQ_LEN
 LOG_2 = math.log(2)
@@ -813,14 +814,15 @@ def main() -> None:
         optimizer.apply_gradients(grads, model)
         mx.eval(model.parameters(), optimizer.state)
 
-        # EMA update
+        # EMA update (defer eval to every EMA_EVAL_EVERY steps to avoid per-step overhead)
         if step >= EMA_START:
             if ema_params is None:
                 ema_params = _deep_copy_params(model.parameters())
                 mx.eval(ema_params)
             else:
                 ema_params = _ema_update(ema_params, model.parameters(), EMA_DECAY)
-                mx.eval(ema_params)
+                if step % EMA_EVAL_EVERY == 0:
+                    mx.eval(ema_params)
 
         should_validate = VAL_LOSS_EVERY > 0 and step % VAL_LOSS_EVERY == 0
         if should_validate:
