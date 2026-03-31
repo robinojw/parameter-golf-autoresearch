@@ -83,14 +83,15 @@ def run_remote_training(
     if env_vars:
         extra_env = " ".join(f"{k}={shlex.quote(str(v))}" for k, v in env_vars.items()) + " "
     # Use pod's pre-installed full dataset (195 shards / 19.5B tokens) if available.
-    # Falls back to the 1-shard data we pushed if the pod doesn't have it.
-    # Use pod's pre-installed full dataset (195 shards / 19.5B tokens) if available.
-    # The template may put the dataset at /data/ or /workspace/data/.
-    # We check for shard 000001 (not 000000 which we also push) to confirm full dataset.
-    # Falls back to the 1-shard data we pushed if not found.
+    # Check shard 000001 (not 000000 which we also push) to confirm it's the full dataset.
+    # Tries multiple paths; falls back to the 1-shard data we pushed.
     _data_detect = (
         f"_dp={_wd}/data/datasets/fineweb10B_sp1024; "
-        f"for _try in /data/datasets/fineweb10B_sp1024 /workspace/data/datasets/fineweb10B_sp1024; do "
+        f"for _try in "
+        f"/data/datasets/fineweb10B_sp1024 "
+        f"/workspace/data/datasets/fineweb10B_sp1024 "
+        f"/workspace/datasets/fineweb10B_sp1024 "
+        f"/opt/datasets/fineweb10B_sp1024; do "
         f"if ls $_try/fineweb_train_000001.bin 2>/dev/null; then _dp=$_try; break; fi; "
         f"done; "
         f"export DATA_PATH=$_dp; "
