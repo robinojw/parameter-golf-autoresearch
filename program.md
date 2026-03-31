@@ -143,6 +143,41 @@ Already on the leaderboard — build on these, don't repeat them:
 
 ## Strategy
 <!-- STRATEGY_START -->
+## 2026-03-31 (Cycle 24 — H100 baseline result: 1.3499 bpb; enable TTT + zstd-22)
+
+**H100 BASELINE COMPLETE (run: runpod_b80e17d_03310406):**
+- val_bpb: **1.3499518** (SW-stride64 eval, TTT disabled)
+- post_ema val_bpb: **1.3438** (diagnostic)
+- mid-train val_bpb (step 4000): **1.2799** (before wallclock cap at step 6851)
+- GPTQ: 106MB raw → 27.2MB quantized → **16.84MB compressed (zlib)** — 188KB over 16MB limit!
+- Issue: `zstandard` not installed on pod, fell back to zlib. Fix: `pip install -q zstandard` in training command (added).
+- Infrastructure fixes this cycle: env dict format, data/ rsync trailing slash, optional pull, trap artifacts on exit, timeout 720→1800s.
+
+**val_bpb 1.3499 vs merged SOTA 1.1147** — gap of 0.235 bpb. Main sources of gap:
+1. TTT disabled (expected -0.041 bpb from PR #672 with 30 epochs)
+2. MuonEq at H100 scale may not match local MLX gain
+3. Stack differences vs top entries (WARMDOWN_ITERS, ResidLambdas, etc.)
+
+**Priority stack (Cycle 24):**
+1. **Enable TTT + use zstd-22** — Run with TTT_ENABLED=1 TTT_EPOCHS=30. Expected: ~1.31 bpb. Also install zstandard so artifact fits in 16MB.
+2. **Add artifact_bytes log line** — Added `log0(f"artifact_bytes:{total_artifact}")` for orchestrator tracking (done).
+3. **After TTT run** — if budget allows, try WARMDOWN_ITERS=4000, ResidLambdas.
+
+---
+## 2026-03-31 (Cycle 23 — MuonEq+TTT ported to train_gpt.py, first H100 run triggered)
+
+**FIRST H100 RUN TRIGGERED (commit b80e17d):** Full stack submitted to RunPod H100 SXM (8x H100 80GB HBM3). Run ID: runpod_b80e17d_*. Expected ~1.09-1.10 bpb from merged SOTA 1.1147.
+
+**Changes in this cycle:**
+- MuonEq RC equilibration (arxiv:2603.28254) added to `zeropower_via_newtonschulz5` in train_gpt.py. Controlled by MUON_EQ=1 (default). Locally: -0.103 bpb vs NS5 baseline.
+- Score-first TTT `eval_val_ttt` added: 30-epoch cosine LR decay per chunk (TTT_CHUNK=32768), bank-aware layer freezing (TTT_FREEZE_BLOCKS=2). Enabled by TTT_ENABLED=1. Expected -0.041 bpb per PR #672.
+- Fixed `run.log` output: log0 now writes to both `logs/{run_id}.txt` AND `run.log` in cwd, so orchestrator parse_run_log works correctly.
+- Added dedicated `val_bpb:{float}` log lines for orchestrator result parsing.
+- Fixed RunPod GPU type ID: "NVIDIA H100 80GB HBM3" (was "NVIDIA H100 SXM5 80GB" which didn't exist).
+
+**Current train_gpt.py stack:** ParamBanking + XSA-all-11 + EngramLite + coprime-stride + NS5+MuonEq + LEAKY_SLOPE=0.75 + EMA + GPTQ(int6+zstd-22) + TTT-30.
+
+---
 ## 2026-03-31 (Cycle 22 — GPTQ implementation DONE, Tier 2 unblocked)
 
 **GPTQ IMPLEMENTED (commit 260447f):** Full Hessian GPTQ with actorder now in both sota_1120_rascal_train_gpt.py and train_gpt.py. Train script now runs int6+zstd-22 post-training quantization automatically after training.

@@ -6,7 +6,7 @@ _DEFAULT_REMOTE_DIR = "/workspace/parameter-golf-autoresearch/"
 _DEFAULT_LOCAL_DIR = "./runpod_results/"
 _DEFAULT_NPROC = 8
 _DEFAULT_VOCAB_SIZE = 1024
-_DEFAULT_TIMEOUT = 720
+_DEFAULT_TIMEOUT = 1800  # 30 min — 600s train + GPTQ + eval overhead
 _TIMEOUT_EXIT_CODE = -1
 _RSYNC_BIN = "rsync"
 _RSYNC_FLAGS = "-avz"
@@ -55,14 +55,16 @@ def push_to_pod(
 
 
 def pull_from_pod(
-    ssh_conn: str, remote_files: list[str], local_dir: str = _DEFAULT_LOCAL_DIR
+    ssh_conn: str, remote_files: list[str], local_dir: str = _DEFAULT_LOCAL_DIR, optional: bool = False
 ) -> None:
     Path(local_dir).mkdir(parents=True, exist_ok=True)
     user_host, _host, port = _parse_ssh_conn(ssh_conn)
     for remote_file in remote_files:
         cmd = _build_rsync_cmd(port, f"{user_host}:{remote_file}", local_dir)
         print(f"Pulling {user_host}:{remote_file} -> {local_dir}")
-        subprocess.run(cmd, check=True)
+        result = subprocess.run(cmd, check=not optional)
+        if optional and result.returncode != 0:
+            print(f"  (optional file not found, skipping)")
 
 
 def run_remote_training(
@@ -73,8 +75,19 @@ def run_remote_training(
     timeout_seconds: int = _DEFAULT_TIMEOUT,
 ) -> int:
     user_host, _host, port = _parse_ssh_conn(ssh_conn)
+    # After training, copy artifacts to home (~/) so pull_from_pod can find them via relative paths.
+    # run.log, logs/, final_model.int6.zst, and final_model.pt are written to /workspace by torchrun.
+    _wd = _DEFAULT_REMOTE_DIR.rstrip("/")
     train_cmd = (
-        f"cd {_DEFAULT_REMOTE_DIR} && "
+        f"cd {_wd} && "
+        f"_copy_artifacts() {{ "
+        f"cp {_wd}/run.log ~/run.log 2>/dev/null; "
+        f"cp -r {_wd}/logs ~/logs 2>/dev/null; "
+        f"cp {_wd}/final_model.int6.zst ~/model.zst 2>/dev/null; "
+        f"cp {_wd}/final_model.pt ~/model.bin 2>/dev/null; "
+        f"}}; "
+        f"trap _copy_artifacts EXIT; "
+        f"pip install -q zstandard 2>/dev/null; "
         f"RUN_ID={shlex.quote(run_id)} "
         f"torchrun --standalone --nproc_per_node={nproc} train_gpt.py"
     )

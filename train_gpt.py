@@ -2532,6 +2532,7 @@ def main() -> None:
                 f"gptq:saved path={quant_path} file_bytes={len(compressed)} "
                 f"total_artifact={total_artifact} gptq_time={1000*(time.perf_counter()-t_gptq_start):.0f}ms"
             )
+            log0(f"artifact_bytes:{total_artifact}")
         if distributed:
             dist.barrier()
         # All ranks: load quantized weights and restore model for final eval

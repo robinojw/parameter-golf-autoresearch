@@ -1,3 +1,5 @@
+import os
+import pathlib
 import runpod
 import atexit
 import signal
@@ -5,7 +7,7 @@ import time
 
 _DEFAULT_GPU_COUNT = 8
 _DEFAULT_VOLUME_GB = 50
-_DEFAULT_TIMEOUT = 300
+_DEFAULT_TIMEOUT = 900  # 15 min — pods can take >5 min to boot
 _SSH_PRIVATE_PORT = 22
 _POLL_INTERVAL = 5
 _PUBLIC_IP_KEY = "publicIp"
@@ -23,16 +25,29 @@ class RunPodClient:
     def launch_pod(
         self,
         gpu_count: int = _DEFAULT_GPU_COUNT,
-        gpu_type: str = "NVIDIA H100 SXM5 80GB",
+        gpu_type: str = "NVIDIA H100 80GB HBM3",
     ) -> str:
+        # Read SSH public key from env, then try common key file locations
+        pub_key = os.environ.get("RUNPOD_SSH_PUBLIC_KEY", "")
+        if not pub_key:
+            import pathlib
+            for kf in ["~/.ssh/id_ed25519.pub", "~/.ssh/id_rsa.pub", "~/.ssh/id_ecdsa.pub"]:
+                p = pathlib.Path(kf).expanduser()
+                if p.exists():
+                    pub_key = p.read_text().strip()
+                    break
+        env = {}
+        if pub_key:
+            env["PUBLIC_KEY"] = pub_key
         pod = runpod.create_pod(
             name=f"pgolf-{int(time.time())}",
-            image_name="runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04",
+            image_name="runpod/parameter-golf:latest",  # matches template y5cejece4j
             gpu_type_id=gpu_type,
             gpu_count=gpu_count,
             template_id=self.template_id,
             volume_in_gb=_DEFAULT_VOLUME_GB,
             ports="22/tcp",
+            env=env,
         )
         pod_id = pod["id"]
         self._active_pods.add(pod_id)
@@ -84,6 +99,10 @@ class RunPodClient:
             candidate = runtime.get(key, "")
             if candidate:
                 return candidate
+        # Check the SSH port entry's ip field (RunPod returns ip per-port)
+        for p in runtime.get("ports", []):
+            if p.get("privatePort") == _SSH_PRIVATE_PORT and p.get("isIpPublic"):
+                return p.get("ip") or None
         return None
 
     def terminate_pod(self, pod_id: str) -> None:

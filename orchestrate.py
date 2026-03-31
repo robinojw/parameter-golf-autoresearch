@@ -328,16 +328,13 @@ def _handle_promotion(request: dict) -> None:
     pod_id = client.launch_pod()
     try:
         ssh = client.wait_for_ready(pod_id)
-        sync.push_to_pod(ssh, ["train_gpt.py", "data/"])
+        sync.push_to_pod(ssh, ["train_gpt.py", "data"])
         t0 = time.time()
         exit_code = sync.run_remote_training(ssh, run_id=run_id)
         duration = time.time() - t0
-        sync.pull_from_pod(ssh, [
-            f"logs/{run_id}.txt",
-            "run.log",
-            "model.zst",       # compressed artifact
-            "model.bin",       # uncompressed artifact (fallback)
-        ], local_dir=str(run_dir))
+        sync.pull_from_pod(ssh, [f"logs/{run_id}.txt", "run.log"], local_dir=str(run_dir), optional=True)
+        if exit_code == 0:
+            sync.pull_from_pod(ssh, ["model.zst", "model.bin"], local_dir=str(run_dir), optional=True)
     finally:
         client.terminate_pod(pod_id)
 
