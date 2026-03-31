@@ -147,7 +147,9 @@ class CoprimeTokenStream:
         self._cache = None
 
     def _coprime_stride(self, n: int) -> int:
-        s = max(1, n // 2)
+        # Stride ≈ n/total_steps so 500 batches cover the full shard
+        target = max(1, n // max(1, self.total_steps))
+        s = target
         while gcd(s, n) != 1:
             s += 1
         return s
