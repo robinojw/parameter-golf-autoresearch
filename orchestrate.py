@@ -575,6 +575,12 @@ def _run_supervisor() -> None:
     _heartbeat_counter = 0
     _results_line_count = _count_file_lines(_RESULTS_TSV)
     _graded_line_count = _count_file_lines(Path("graded_cache.jsonl"))
+    _DOC_FILES = {
+        "program": Path("program.md"),
+        "strategy": Path("strategy.md"),
+        "technique_map": Path("technique_map.json"),
+    }
+    _doc_mtimes = {k: v.stat().st_mtime if v.exists() else 0 for k, v in _DOC_FILES.items()}
 
     while True:
         # Health check: restart agents that have exited
@@ -623,9 +629,15 @@ def _run_supervisor() -> None:
                 pipeline_counts=_read_pipeline_counts(),
             )
 
-        # Sync new results/research to dashboard
+        # Sync new results/research/docs to dashboard
         _results_line_count = _sync_new_results_to_dashboard(_results_line_count)
         _graded_line_count = _sync_new_research_to_dashboard(_graded_line_count)
+        for doc_key, doc_path in _DOC_FILES.items():
+            if doc_path.exists():
+                mtime = doc_path.stat().st_mtime
+                if mtime > _doc_mtimes.get(doc_key, 0):
+                    _dashboard.push_doc(doc_key, doc_path.read_text())
+                    _doc_mtimes[doc_key] = mtime
 
         # Poll promotion queue
         promotions = _read_pending_promotions()
