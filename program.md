@@ -143,6 +143,22 @@ Already on the leaderboard — build on these, don't repeat them:
 
 ## Strategy
 <!-- STRATEGY_START -->
+## 2026-03-31 (Cycle 20 Reflection — MuonEq RC experiment)
+
+**MuonEq RC POSITIVE locally (commit d0010d7):** Per-row/col normalization of gradient matrix before NS5 iterations (arxiv:2603.28254). val_bpb 9.371 vs NS5 baseline 9.474 (-0.103 bpb). Closes gap vs Turbo-Muon (9.354) at 500 steps. Unlike Turbo-Muon, keeps standard 5-iter NS which is confirmed better at H100 scale. Training_seconds=1374s (2.75s/step on M4 — acceptable). Novel: not yet on leaderboard.
+
+**IMPORTANT DISTINCTION from Turbo-Muon:** MuonEq is preconditioning (better spectral conditioning before NS), not coefficient tuning (fewer NS iterations). The H100 concern with Turbo-Muon was that Polar Express 4-iter had less accurate orthogonalization at long runs. MuonEq keeps 5 NS iters but improves their starting point. Should not have the same H100 degradation risk.
+
+**Next H100 run candidate:** NS5+MuonEq+EngramLite+coprime+XSA-all+LEAKY_SLOPE=0.75. Need to implement GPTQ in train_gpt.py first.
+
+**Priority stack (Cycle 20):**
+1. **IMPLEMENT GPTQ in train_gpt.py** — H100 only, can't test locally. Unblocks Tier 2.
+2. **Port MuonEq to train_gpt.py** — Add to PyTorch version for H100 submission
+3. **Test MuonEq at H100 scale** — confirm it doesn't degrade like Turbo-Muon
+4. **30-epoch cosine TTT** — HIGHEST PRIORITY eval-time gain (PR #672, -0.041 bpb)
+5. **best_agree online ngram** — PR #1145, -0.003 bpb drop-in
+
+---
 ## 2026-03-31 (Cycle 19 Reflection — NS5 Muon + ResidLambdas experiments)
 
 **NS5 Muon baseline established (commit 3c22252):** Switched from Turbo-Muon to standard cubic NS5 (a=15/8, b=-5/4, c=3/8). Fixed LEAKY_SLOPE default 0.3→0.75. Local baseline: 9.474 bpb (vs 9.354 Turbo-Muon). Expected regression at 500 steps — Turbo-Muon has early convergence advantage that disappears at 7000+ H100 steps. NS5 is correct for H100.
@@ -198,6 +214,7 @@ Already on the leaderboard — build on these, don't repeat them:
   - [active] parallel_muon_+_adamw (bpb 1.1099)
   - [promising] param_banking (bpb 1.1091)
   - [promising] normuon
+  - [promising] muoneq_rc (local +0.103 bpb over plain NS5; novel, H100 unverified)
 - [active] engramlite (bpb 1.1091)
 - [proven] bigramhash (bpb 1.1099)
 - [active] coprime_loader (bpb 1.1099)
