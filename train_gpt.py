@@ -139,6 +139,10 @@ class Hyperparameters:
     gptq_block_size = int(os.environ.get("GPTQ_BLOCK_SIZE", 128))
     gptq_clip_range = int(os.environ.get("GPTQ_CLIP_RANGE", 31))   # int6: [-31, 31]
     gptq_reserve_ms = float(os.environ.get("GPTQ_RESERVE_MS", "10000"))  # ms reserved for GPTQ
+    # EGGROLL v2: post-GPTQ INT6 bin refinement (PR #1156, strictly additive, ~60s budget)
+    eggroll_enabled = bool(int(os.environ.get("EGGROLL_ENABLED", "0")))
+    eggroll_budget_secs = float(os.environ.get("EGGROLL_BUDGET_SECS", "60.0"))
+    eggroll_n_indices = int(os.environ.get("EGGROLL_N_INDICES", "1024"))
     # TTT (Test-Time Training) score-first eval — PR #672, 30-epoch cosine = -0.041 bpb
     ttt_enabled = bool(int(os.environ.get("TTT_ENABLED", "0")))
     ttt_lr = float(os.environ.get("TTT_LR", "0.002"))
@@ -2049,6 +2053,101 @@ def dequantize_state_dict_int6(quant_obj: dict) -> dict[str, Tensor]:
             out[name] = t.contiguous()
     return out
 
+def eggroll_refine(
+    base_model: nn.Module,
+    quant_obj: dict,
+    calib_getter,
+    device: torch.device,
+    budget_secs: float = 60.0,
+    n_indices: int = 1024,
+    seed: int = 42,
+) -> int:
+    """EGGROLL v2: zeroth-order INT6 bin refinement (PR #1156).
+
+    For each of n_indices random quantized weight positions, try shifting
+    the INT6 code by +1 or -1. Keep the shift if it reduces calibration loss.
+    Strictly additive: only accepted improvements are kept.
+    Returns number of improvements.
+    """
+    import random as _random
+    _random.seed(seed)
+    rng = torch.Generator()
+    rng.manual_seed(seed)
+
+    # Load current quantized model for eval baseline
+    dequant_state = dequantize_state_dict_int6(quant_obj)
+    base_model.load_state_dict(dequant_state, strict=True)
+
+    def _calib_loss() -> float:
+        base_model.eval()
+        x, y = calib_getter()
+        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            return base_model(x, y).item()
+
+    current_loss = _calib_loss()
+
+    # Build candidate (name, flat_idx) list
+    quant_names = list(quant_obj["quantized"].keys())
+    total_params = sum(quant_obj["quantized"][k].numel() for k in quant_names)
+    candidates: list[tuple[str, int]] = []
+    for name in quant_names:
+        q = quant_obj["quantized"][name]
+        n = q.numel()
+        per_key = max(1, round(n_indices * n / max(total_params, 1)))
+        idxs = torch.randperm(n, generator=rng)[:per_key].tolist()
+        candidates.extend((name, i) for i in idxs)
+    _random.shuffle(candidates)
+
+    improvements = 0
+    t0 = time.perf_counter()
+    for name, flat_idx in candidates:
+        if time.perf_counter() - t0 > budget_secs:
+            break
+        q = quant_obj["quantized"][name]  # int8 tensor on CPU
+        s = quant_obj["scales"][name]     # float16 tensor on CPU
+        current_code = q.reshape(-1)[flat_idx].item()
+
+        # Decode position
+        if q.ndim == 3:
+            sl = flat_idx // (q.shape[1] * q.shape[2])
+            rc = flat_idx % (q.shape[1] * q.shape[2])
+            row = rc // q.shape[2]
+            scale = s[sl, row].item()
+        elif q.ndim == 2:
+            row = flat_idx // q.shape[1]
+            scale = s[row].item()
+        else:
+            scale = s.reshape(-1)[flat_idx].item() if s.numel() > 1 else s.item()
+
+        # Get the model param tensor (same name as quant key) on device
+        param = base_model.get_parameter(name)
+
+        best_loss = current_loss
+        best_delta = 0
+        for delta in (+1, -1):
+            new_code = current_code + delta
+            if not (-31 <= new_code <= 31):
+                continue
+            float_delta = delta * scale
+            # Apply delta to ONE element in the float model param
+            param.data.reshape(-1)[flat_idx] += float_delta
+            loss = _calib_loss()
+            param.data.reshape(-1)[flat_idx] -= float_delta  # revert
+            if loss < best_loss:
+                best_loss = loss
+                best_delta = delta
+
+        if best_delta != 0:
+            # Accept improvement: update both float model and quant_obj
+            float_delta = best_delta * scale
+            param.data.reshape(-1)[flat_idx] += float_delta
+            q.reshape(-1)[flat_idx] = current_code + best_delta
+            current_loss = best_loss
+            improvements += 1
+
+    return improvements
+
+
 def pack_and_compress_quant_obj(quant_obj: dict) -> bytes:
     buf = io.BytesIO()
     torch.save(quant_obj, buf)
@@ -2522,6 +2621,20 @@ def main() -> None:
                 f"gptq:quantized baseline={qstats['baseline_bytes']} quant={qstats['quant_bytes']} "
                 f"ratio={quant_ratio:.2f}x n_quant={qstats['n_quant']} n_pass={qstats['n_pass']}"
             )
+            # EGGROLL v2: post-GPTQ zeroth-order INT6 bin refinement (PR #1156)
+            if args.eggroll_enabled:
+                t_egg = time.perf_counter()
+                def _egg_calib():
+                    return train_loader.next_batch(
+                        min(args.train_batch_tokens, 4 * args.train_seq_len),
+                        args.train_seq_len, 1,
+                    )
+                n_improvements = eggroll_refine(
+                    base_model, quant_obj, _egg_calib, device,
+                    budget_secs=args.eggroll_budget_secs,
+                    n_indices=args.eggroll_n_indices,
+                )
+                log0(f"eggroll:improvements={n_improvements} time={time.perf_counter()-t_egg:.0f}s")
             # Serialize + compress
             compressed = pack_and_compress_quant_obj(quant_obj)
             quant_path = "final_model.int6.zst"

@@ -335,6 +335,7 @@ def _handle_promotion(request: dict) -> None:
             "TTT_ENABLED", "TTT_EPOCHS", "TTT_LR", "TTT_CHUNK_TOKENS",
             "TTT_FREEZE_BLOCKS", "TTT_BATCH_SIZE", "MUON_EQ",
             "WARMDOWN_ITERS", "LEAKY_SLOPE",
+            "EGGROLL_ENABLED", "EGGROLL_BUDGET_SECS", "EGGROLL_N_INDICES",
         ]
         forwarded_env = {k: os.environ[k] for k in _FORWARDED_ENV_KEYS if k in os.environ}
         exit_code = sync.run_remote_training(ssh, run_id=run_id, env_vars=forwarded_env or None)
