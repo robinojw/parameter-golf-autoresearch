@@ -1,237 +1,2477 @@
-import lzma as L,base64 as B
-exec(L.decompress(B.b85decode((";QW6{lU)Ea9Eu`uszf$Krci>25I-HuUNjF`N?9VI&1P%41Wt3M0Hcpeq2t7I+i|^Q4oZB{``J0FU3X2U4meF$mFa2B3GF+Z3|4e0"
-"{mc^d8d0n*^ZsT*8^D&x=UOIV2b{I*CE4Q-rd~sobA>V)%nSu@@^Z(~Q%rB3D%v>I#nbyG>1{6Y6k~~>vA19r172|RvtEBGGu;#("
-"ekVK?W*u%)mUS;x6O*mseNu&fO7TlRqGC@bND;hS;(BlN$#_@KiIjk7Oy`)VXlwus7{qH4^vH+GCw$=shu3Fr+LYzvEEy#5pytGJ"
-"DW0|=OtQ_8m0BSNs$ou92tYgM>QzFplDj6heF|mXl@R7uqj|iMpYZQ$;EuaG4zdL;JugRJ4D)zurK4>BpNs8*>-TsNI2_i7si`jT"
-"Rr9emGI+^2w)``41M}JtHaIQT_`HFrO{mW<{ZuNb8R(OVe_B;OP!~TlF^LMHU&z_iz~6s(H%n^f#Z%>qd@L2k$;h$ySktPJi<xLy"
-"Jgeo<w3~C-93!E+h9BuY0Y2WX5bLb;-NYfLSQ%v^-}5}BcQ@2Sc7yet3-GI+Z0wIggCXHdLj87hX|I=5cDuy+&Wlo}t=9fVeQ6d*"
-"YtF1#t6g#0)2YcE>O%<C(N4ruj0jgx>LI_vqxC&_lRF}HW_&tqq=kSd&~~HVH)kX`FR;S*3{KyXSVc@0`_-FXI~&21zfrN^j}H~$"
-"nGnBXf1UN2MrOvQ1Hs(`A?mMcC5y9SzIme>E9QEZ!^VUe{i+x}J<rE}nNIqJFpH>=GUJ8LRH=N|qKIXhTk)TT-<BBkJrs85o3E1H"
-"m++)2koYta^n_SGKhuVoYdj~|5E-&_QP5*5WCpmK&>hS(bC-Sp3|0dWbR?=KxZH)eQcEV3GPhpH`5|QcoP$)3JW-%BX}@34fSR@Z"
-"n06?11l~q(qnxnml-~_Ks=p&y9!u~Lk*zokaOSSb2=4e}n{~c^6RP`nC(Yk$;b=HKFBiqt0pgAcVZUGHS~3#uI1m?gP1LU-!c-E_"
-"kdHcTpAjrt8s$I0NO3COG@HSlUZDouNjLW8wm2jd-7YX`=CE-iI!F*GQ@jsv4yqymGNZK0I!Ys-Do6AgRUtd7-kh;6hrRmA4+^hR"
-"@z7fGt3W%AU%sockeBFhYN*9JGE?@JE38V*6r}}OSBv}=o-c!y&-!)s(92m~*flg`nZr6m=Xy;4ATh;?DHHDy(zsEHl($>N3*m6+"
-"Dy^?t>0-#3qI1uBbUEwX>F`)32?dmfF=TJnIF?L(bx7kMnG2Mi^DTs#N{(rZifz*wzZ=pdN-L2s-b+%TO;B99o+r<mq|m`4VM^mq"
-"A*tOlc6PlZ^5|8R79qrP96tkAr?#c*jaWjk+3&2rl)}`fVhe(u_6-oLa2W8k*SMBF>C!LL58U4b=|nW3oqDvt<qG6|&jQ)xU{D%3"
-"pIYsgdNx(hOdMvhQ@UGE+(p%(AAR@N=E~2<a{C&6q!?m}kMYN(e>4Ih+|Dnnhj2g)VuIQS;)l8{!aM1VsL{L4b=QM-UI~MzfqhZ8"
-"*aaNH<cO(Mv4Fo1S3NQenN%jcn#a%Hm1)TpTDUb9g9x~vz-ycOhY2VRL%<MTZA>hPnYrqMJ{wsiG1TGXrY3s*;se?q415RWx@}uH"
-"=eabT&1hP=Q-fE4Z6`fJs>?N)6+~<259lK7HVm=K1hYRgJyI7GM<`H073?J(8SWuldTQmISKveut-yDANyO~nxr}M(vnBFzyHG0Z"
-";I}X`B2`LHVMk(12wj`X)P}j+Crr+L9SFmwHM&b0dtj22G^~%6V@vfJ6s8}@JhH<9UoQcsI(!&jqAr#n$kJlQ%;t3j1`m^u=mPk}"
-"E_l7OJZCALJ?}yT%YbhdS3r!?JJWswAKFUj>#YwJXn?oZZ}6Vjh3M{5Qt@jjq0^WKTFJI7V=a9ZwXhDq0UGwz-XZ>@B#frbH{CSW"
-"L!Di88vdbb)|#>#M?KVaP~ruaBt<UnwzkvbETo84b2R}&{nXUT_x2M)s@fGE12T`nE;S<x*FNodCO~Xt7gaH1M9G>Gf#fNp1@Ua;"
-"7wnj62mb&iRcKG!3-WFCJNH$%vB*4G=7DGvQWRm=MOC+ZlIQ%yVs^I)1KJy)nJ{Dq=tJT?oLhb%13$APjEQ6ZR^a>)<&>^yP=)YL"
-"q^wUb0qh6BD!I?xb4~dqbPNfKmp0k{0ky+$iM8K?_fbF|uk4G4JY^$tx`drR)z6M&viWXbHQFx;YOYBh8CRO39f?HmfGV`YS(PTS"
-"Eg5!p^#opwjTq6_Uh0qMk&aGUgL+yk^?80Qk;&p9nGAR#)%`fAS_2QZhL(-?M4fPbyuy(##j5Q=3(4+it7%avJE3~3aAcvbSAnb4"
-"f4!ZW-_s)q{AYXfsfsjY{owlw=cp(aC)*k@qe<Sl^wRjk(2Y2xJF~~u&p81oK>&#3{!>PufB-EzGq&#>uFDqJ48BPRrth>4y52hM"
-"Zj>v7a!S&EZ%~bQfI$?~OzRoPD2k#LiAGPuLO|;J_{xB%B59B&a&}zjNQhCKfW*PKQ~CUyrzDd+2W@38p10PvP!phxq-*Qh?4g=V"
-"FlMPT_zz$|w<|^vx2p@V#4KOC7?Pue8wG=6dk!UPh26X&2ma>ag800_s6z)BDX=NB3c02ERh(V{{VXZ48NSKYAfH^QJ39d%xx9Yp"
-"^2_C}@bSuYBWO|l<;`=eyKWxgWsL|W-~>di>v?P9CDzpxl!iz0zZRtQ(Tc29(;^k9kg~&d=UtMk6y8*Ef&X7H;(j}F2bn#>y5m&N"
-"?au{T_`TNC&OyiQ1}+>Fu5GvWAzbWBiG8$Cs4I1te$*db*BN#&*kQscbDUrNmhX+)%>0Tl81f)Ji^@yXynYyn4_Zh@JeLKsF!wp#"
-"9NhNIAxo$;swC($x7w$G57`?V+z#Punm67+Hb^7U2?2@SA=mB3Ch37CAW*))7IGCQ|I7&rsrqzHs@dD>&{C-0rEm)g#$)f8l7eFC"
-"kAy_1ONQe2pchhz;L}c5Y&vahg>d4vvEw*=&PaMzL7R?CkdR@5Y~LBT_pORTrskEOMK+Tn!YINF$BMWNrWle|hSK)umiGr0U(DtS"
-"7N+efUS@vo{ce+!z?h#tuAyrMq=6UGZd}@%MP7JHmN*AuktVZnQv^1Tr_GAQ^854GKqZL@g3?GjQ?v;NK(;L}?|@ayb~7(pRq3uz"
-"eVUu}b%?!mRBHLI**`2+LLf8BNH99Wf3^29#o8UoHoOYLszzQ+Lsw{#Fo<_QBzC2pph`7R)M<NXx7kyrS@ogIuZsr)&*VFJ#`U7@"
-"shs~U_$PT0)d>xg!%14SkF;<Dqy%CDMjUU03qUC@L$5Td*mS3sKWA603a_`fc@TSofB(31)<@LYucT{B$`wuN?xCVL;}11$wov{A"
-"^ifZ}7Y?Asz$=288LQIMh;o5UX6c|-e3BJOa0T%6Fj`HzMdZCD%7KE(B6#Rqv-dic%G-ysDjD_bufQGqbJth3dN#E2<4Ny@sXG|E"
-"y84XryrS<lybnzV>rYQdty=@&WjgZPGmZteLT}JU@lxkAl!Q_boLsPw&!MEl7-fR_Jz|AywtHmTf5X+i5Fh00SKG<Rbrv`-ImDe7"
-"ZBx#-DrRbhFnRfj{e7XPWE~pWq0vB?oEf#aRH=Eq@;lGOX7dZiT@C%EMy#W92B(N;pB@<yg$+w23{8LI9+7c$u5IxgstHznNxHEl"
-"MN>7ACZ>%1sU7OWESkzi`5{c*D~TA(lVa1LZ&XCu$-88xQ2ONIRVKj}9pgBFn`%xhJ%Wxk%1BkmexxDx;C$=IQ$@D!0QzKT0={7{"
-"0<<FV@kNN8L;vY3U0uR%#35X;L<2<mCdTgc=%39k0RG<7?2fVxgr)@!#rd#8<&~$T3|;@Ujh~ctBCD??gN$?tm2X<|AAc4v?}qbM"
-"aB^HDCu{Jx(R$CjF7w8a|B8rm5n`0wZi~>b1hp8whq7;>Z_r?V0g3Ir^t-mz&BPUGHBFV(X$+CwfJy*z(o_!Cbq4WT5_p#XxDEHH"
-"*Y8aa=9uuU$La+B+g{Y49%9ru9b`$Sj)Y~6gT)bkhEukK9NoH6_415Wrlm0jqb;Nu2lWZ_zTpwLufZHS*qZc*j*goZda$uZ_AkPY"
-")@LP6i!BeWOv+m@tU9>Z_(c3wpr)<dHhL2W(>y}goPO-`Oi-s4lrZ~(fo5Pu`-0iU?~F81>S>o?m!h??Evr|rk=FFuaQQhDS3l>r"
-"W?ZVb3k4O_kdAG*QnAQ{RDxCnUX_Gvbwl2M@Danxj6i|<?F5xNLM}uHMucyv!sbbn)qpDx0(^N({=DXXPjWZ;&3u)7vfy^|nU@cf"
-"UYW_CSNqR6G_yv@S?uIS^WCAGx*1NTiA;~!xrFxVI<6yYQ@Cv+HO4xee7dNi-g|lht;xE*x8SN6RV6KOCLsLdKbe&0S4@2#6b^Zc"
-"F)qJ9Rw6DaAhZnAj9+*bGwtepTF4np*n9mA``_hvV<rCVY`6wlHOCE5Q9cTsWU>F2`2|jqvSC)GG=CZmD9SR*J}x-|^Jwoa>8l`="
-"@N-#^GB4s4<m7WunWvj&%Sk*!AIRbV6)odCvhzTAf#niVt5%Jee}GkdhQ`1$aznSo0M*=2=jSokW^gGPN=Dw&7k61s)**E{&YCS_"
-"dQFQ$Cof_0XmQ`pRJUaU-FdQmO4IZq%tA&EJo0{YOcVmRPM|q%({ix>QH306f26{?-X>lM+En&~8^z2nxRS>|8{(pRjr7~m5;KcY"
-"2;v#)a7P!{f<7hk2F{(FzMNr;vl^S97Vy5!Tnc6Wj-8Q|oTM8_R@zAYX<Ag5-^Akh*2qH`pr&CtVFFv47^qGn`<|dgPphbi-Halm"
-"{RHL<kqZwt*GlqxAz!~H49PR`7njZ$3q22in7Am-ZM$ZTMOR%KW`3voBXcB8BaXEoGE3!h#WEqRIeR61LKx9=xhODy0dM|LNycIz"
-"qsM-JW@?8#n{8C46PadM1QNW0HpdHVUKgO{c&cJQZP!q1MKG#CQk+NoG<2j}H80zdItdkUXSkALvAAw|noX-H=k9npN4W)==0HlX"
-"6kN(gEIxZEi#m%@G|r2d+L{xZx`96&sDGuR{@`X@8Uvrvt6Lu~=xt*U*lYjc;`o;C{YF*4U{-?;{bov>yYXM9)0+s*cNzsKtKH@_"
-"&Ze7&?YnZeY4%4?1|S1Q0hL4nS=D*emnTyUL0{H~MqWg$Yo7gJWhTks`5GSa%<l{|8CGVG*mITG2G?6dI@x`cVgas}Fp^@r5abB~"
-"HWq3G4<|Y>j|4hmPf=SYMX)Ti!k6SpT^v3ZGR1^h1`LC?cU&aOz`7&K);PHz+tx^cYp9(<{rbDPr^4Q(xTS;0Mecs@_IWpTH%x4^"
-"JU!N^gD={CLMN#pJN%pM4kyp{@4Wd{J)L+=%{7h4u9A<ILd9cuAKY1*%l0^f5zSow?<ixKoo3e>CK9Tg0bo#pv5BeOy?2ige>`;v"
-"M`r$O`xgqS84XqHkKS2#REf8@uwQ?<)dZ8S@#uHC*@Fp>eeYlEu=#{9=<xHWHHzuT<`veHs4p6&5Z5&o_%qGJsgyLwVTTffY5%CQ"
-"qCBnQ@x8d))EA0!Kgtmi5ur#3B2IgM0?Zj#7HN#l<7?#QaGH^XnWS<4r*3NCD60nJS&C2p+rN&jgkP%|hrUaflC|{==)CX@4_mI_"
-"Wn@r#v#{(EWpLiNrVu4Bo`36M^!%y4RIupYqR0N^#zBZCULkMP6lp^fmK)@Egh1(QB=UZ9^h9XIN;e(R6DQ4AtSS5JXQ;MJnl#?X"
-"yj8hm$5qcu=bJEm`5T>O4L@VU2)FuRgy6K>=l&zALj>3FOh16Trj?j+1HvJVspXf4UPG+28osV4lalO7^~7)fmNsVNe7onE>c;hW"
-"w;f@ALKCYKhJzL__w#?o`HBLG<pRE&b$67wJZO~4TK1Fd@cr^&+}^~Ze5XXH#y^McvBTONq83#Qv)Ziv1XP68jx4Q#Zj=2xaqx;X"
-"lRQr7qQNP`rjSJ=LTN%c>YhAxAjXx2P)@@KJ$%{^!CTldf3ZRt4{vZhqq{Y@i5Edv3Il@IIc0)P(e>VhJ8exF<_eL`a@C1%Bto16"
-"X_>by-bCf|TGO|IUh`YlZp+Ewd2f{AupnYTuvqaNLkaWfoS8#CZSM6O7|2LLc2c;@Gze?gUITV!f^mA1^s^eG(;`ODSvpMIBn)!Y"
-"i%+4*8@iWvU?}My?Y648G26c^3_xMn6vpzkBZ$a6ATPxIGRy!<azhb3jVy%>E7c<~C)o~!0+BH8T>jK&h_+vaCgHrv`dGs%P+3)t"
-"!mn_qvBzR>-x@rSRl0=r1IILXU#vf(W#6rH$G1BV4dVV!{@1J=1UbD6%5Y}Pz@l>y!GD%cqY!iVo+Kpf7pyRl5HZ~*{YzIQB=e9P"
-"(V(UC?6ZqUiQq#79D6)Qp8D;KHRf2ie62Qjyu^gW9e~+LqeNFsib-ehNGZboskv7oe3n_FD!qH9C&-O10O1iRv~x&er{Vu65aWNa"
-"Kp-bP(RTG8yQfC+#&Akot?~kkS+5q`Byk`j`;)nts0KvOIJ5=4lc_bYzifp-hhA&;Qtg(WXX5|8V#mxA$dB7{?X{TTqJp<N5Y=l}"
-"QL@PN5K{>i+Dzm$;~Chdpj6Ewbi|T_bFG&x4i4J*|4vS8PRdzTgUBRkEIL{4?XE?tg1>dgr$zv1Z^yYCJVdk0n`Hg2`@{Tfh!P~k"
-"n>-Nz75pnV@yaJte72JR2$thQCSc^|kR%^zhUH})S0=Ggfx5@eyE~1CPxcf_u<Yly*@QM$e@J@M#D2A*(zV=Ss)ID%F8|E1HJ{l6"
-"Wh@g(W>S5(*Y1JvZd~OJL8bR!J$N5`M7&n)Yr~E8G!DT{-vSuaO_JeBoL&Bl*0n;!YCkC+eHaTTH+HUKh#@3)=v^B}S3f?M$`qC{"
-"x5T|Hx~4upChwyPn^OHDo){McXSv2!?`}53p2NiFNq2`4$S!`DT8+r?TVqk&z3U;TYXw23zC?Qd>QAiET-AmWCjxQ?420sLdTG0F"
-"PWH=sG|uYyBy3b31G^JfUd%*WsCQuh>%eyYeWCIz(|cOkvOOpWJBFxM=mWhZSLERmHxLs&3J$z75*dk8-fY>+J@;GwYhVwN<p|gp"
-"Xbi>QGTN%oDS42+tphhV#c}f@t%xW^HW}^x>7`?#!?!b8{)C9{d%NvME26^<ldWjh%>(20HL1Wv-lPj&YQo%silP;q7Ows-+Xqg4"
-"tdSzV$S%%>so1;9Ap}!bwBdtc3J*8y0(IR98iY=fQ6X8~$$b#wtZ{Phw6IYI4Z%_FbnNrQYam9x{a%|KXOofc9g_cU%@gHt!?``L"
-"!$d!ZBbG0MOqwIHO9)k8xN}Bufg4eT1|%4%Ahe*HN`T4mu-?VeUij9qS4edi9W$Gyloj#<4%JaaG!M{AacouQBXO6UB5C}PW2Aap"
-"1cG_gDk%$7E(TbcW;<q<gO)mMI$JyZTe0uARk4dyBapS<WF7LHiH@zSUB6-iYQNvSq+1HM-C=VQ&9EML!)K+co^pD%4ZZOv0aSKJ"
-"3D_e<(K4Z7XT=Y(J~8Ah%%KiIN;dE~k)VTI?gq+5AW3IUAi*ul5I8g0+lQFI3T(1Opz9&@$5~FE)3Xw=UnC8q?2+8$CkNm6s#}(m"
-">g1V(ELq!|l5m(GJOyZuuHhXG92-^t8w6Y3#D&SE4f;U%K=QY(@ir8UF$8cPFh5Wz?$#w;x8U)Dy4z3&q|&N%JCZ$V+ssN@c}-V_"
-"6Ja6wRB9X?56?b#2Rb>+7W_bLf3c@cUL}qzK({U1warGH4<PpIp5^#bA}WGn1BXc&jsTz^E|Yhk)N7n`P<)8&7PE3}`E(KQBGBhb"
-"Kjfzh^Hy_C>Zty*-+rVd?iOk|&!~edEBeYEUR!NjJVKsTAT@8O{1G;S(2o#R<S;FN0Ji?epQZ#r=1eQJP`>GK$p+XnN_i4@nE7rC"
-"vQrVpQ<iFM1L9JZb3Z?ojMDZIvUHF!Qb3Ye1vCs_^(n8C684@S_8s%!NZ+v*3d4y{QsK!>g)1R>ep=4wQB*ST{i{}i3r;5UK~dR4"
-"1PE3C4yq4yaMrEb?8&PiOxl-p<cHyAu{TA^*&gYmDF!ednDG_94(nRcH-0Jw84o@EitWO9CAhYH`$Pd-xWG8bW?hP6rZK<^AT}&-"
-"U;3iQFu&!SGC;&|S958>6NQMIG*WNxcyW<>s@SzvYh!7ZzFn}--x%VAq-E*<=h^Vb{h8QbTBte6`7olyhz-WWKF#E3c<yyp;wNpQ"
-"@w1JIKFq$Escn4tj(>IkN)2mK&qt=0>W*6*h-&K7DY!XK``EkBO-Pn|2&|t_AJ1TYN+<kxIod_EXsdQdHnzT0nsN3!i&TRh;NYds"
-"Z(;f3xS%oa*3WF&j%1DhncSpEtBx9`h>B##efxV^uZp?)HT)HXLoQlt$lo=V6iE$EtM0%nGm25qp`T|JAo(vSjn^HITwfQ*NxTY)"
-"k`9kx^#`N+u%Gc6qvRdGDz!MKtT#j1A#8BD<k-;7^rhimY5WggSa!on*%|n8kZWnX<hGlumupPrkG^!Yx_n%d4`+P{uhl85&YCIC"
-"7<oG%A+gK=QjI-b?@ft0)QDos_gKS641(ga-$?cp?(7g-#$nWH8peNGWS>1PLt@d_i-ABiH9VfNz~#0!iEs@s*gGCsxFNj>nqZQ*"
-"tX@!B&chN8Z+EaCAB~f|q#f<=k92|`SIZ`5IdKvV;}i3!F-OK^cHqY*dP<W{bm5^W8n-$RSJ~&kZ_NQGZ|e3p0q$t3Se3qk>~PUv"
-"we<F)PB!lWGa879jwrpbtvW5nN}VWylE0JSMK{yzLX=$e6j}-H3$*aF6FphR`x*Wm2ZC>8v6)a=q2K#_KqX{NLg>xf<)CxPWK%T{"
-"f9Ep9r5vzF((?;L)tHbjY*>qB<GZ<fgjghb!RF<)%ui|vlx3xMgPN_sAc-!YBFJ-Huq5Up17nA$p^GTk<6A(I2Rs=FF|D<sQ7gdx"
-"<M~V)k0%WIa%UIz@GtBT0msT2V#;9+Zh2&4BzQ#Pd40D$*>Nq`NVHs`rP;&=H7-XMw=iAKAoVl*s|}IVkTARHRxn1Xk~#Gr>dmM4"
-"hWf8E3anAta{1eIU+^8GD;>hrJGiPL2={@>sh&P=RiCIPJ`igbQNA?}FTI5!o3867|Ln<j4y*XLIXThGTsS6Z2T)tz^Q*z2y)gF2"
-"*?75e%~81V(_%GfGtDQk-+}vl>AzoNCZ_pi9Q}#Ggl5O(6r-F(Bch<I3)or47eZk&p^ob*e@*}{L<V%bFD+<My2F^x8ZKi<R2h;+"
-"ZAR?!0m5r<v}Ykeu=TcnaFEN*&;KfpDmox0jK=u&SQN-6Rt#>$PMbN!ZQ<Vn8zSuS@qa<i;>gvwQGMgNbcRHc0sv~O^!m*2F&-uN"
-"nRk@v{<IK@ri%vMpEx#DvU9|o9AJP0NS_i|Dm#8iCJZvKHZ^J7t?}XMQ(t0AP^TOzH|#Gm#67=sp*h~g-u1oa`vyw!&Jo}*PR9s7"
-"rR3q^vPwyMveB6Ulk1QgfG7&ifP~xKB`ti}NQ*suze%P<yCbGL)*h{uW~9X)YMK%@<%>D(%~|U^rpezvwHX2GC#TjJnC>TlJs4;`"
-"w7s=v^@>$mr4HwGd~VKvT;&hcpc~7Sz>G_#f(RC2C{U}aZAol5$bhwvRD_Ogt9l_$3|)1K&LE>sLMmYxddO*aY>8UEV9r(M2LP<&"
-"ZqV%|S(ndH0<A_51nb2e1ZAoKQiS;L5Ld}N?lO(`sP1^k0=qwiPT%ZV4QJ&#ZI>M&&|<;u+YIE?8RAPK1O+Yv(C>ln$*6?bDp#Ab"
-"LvE_(tWIO!T0WYkT|j}ovq1p9BNXE4P}t{sPO1u1#I1rtwEbU7!GL+kjHWE5Edml_!Uev^kE;1dRbqi3+(@-5pRX0ZXvTnJ7z3rm"
-"dm)}U?44PcrDj(|*81!nN<S%!RyW6kW=IoCst4!QaSjc^O!CsSr+<VO*+@$-<t}85`!go~9*cA%zU8wT>ikSANApv6Zk=%g{nmt?"
-"mj*d>VXd=E>#wD;OtaeXn^PZM^TOX`i}HQChZ!>bsf^P^H5OqVyrp7RM5alBHbXQpn-7(Qy_UYex~IO$nsI5rd4n%ua}<`8b?A}J"
-"hgcd)w#c-ZfTC_Fl31ezob0w+uri`qykR(`%D=$6d%M)P6lIz{Hi66cdRCnAAwJNy9tB5e&dJ!ATHui^LNzeDowfg*w{d8Sum7w+"
-"kprNoY8Ks$5*YW`?-ock7E<{LF5dNfUJ{&yGNG%SQFX>I+uv#4<y~93smf9OJEa@lCnu_`$RBij)K>jRSa2zvI8G!G4Pc}Av;B<R"
-"fFzOZlK7pw`DW3IEct$vBnUO9?yW_KOg1e^lPdM#P&wjQgrO>eR;Vki2~wLR7L`3kc3J<~?d7bZs8n6ErXX%x(VAXfTW18!brxuM"
-"7;i$9@$EbELo<<eu{!?QvOEDgv@cjj_GlGzO;t>k39QHE7diUeMP?KJr^&sIuT*eBP96NSSP>sYN5rc$=x{ids{~HX<&49(!^JEP"
-"p;EIJw&HRiRB57szj(UUvDy|ZdT^|hhI<+V8d}?<x&m!ux-kSl<(E$L<e~g&L&LBv%%-4mNnz|ZN4FL`Y>L9GeMqyh5c`t6?D26w"
-"gfMovTf2#yreoNHHaUkbINb>NoPm|Gv<Y=IW2EcFta(gEbcj`nUtO0i)ja18T*5%|ySSs<CtSci%U)Jo3=n53m!q~p*0jwws;`}B"
-"29MmiP6*RB6u8k)07w`2sT-h*=sVVs_Onla*@+Spl4zd5C)$K#ZZEb6GB!4&<7uGIDVw)aJbgt?DY$WC<Pp#;vG=gmr7wPYObUdA"
-"kv{<=Hu5ANxg0YK(ffc*N~9CAPGid$SlX%k>ex$NLj=!s%m4Qosl(xr^5I%=43E@%A5%UUDug-n`lx-8P0xBEN6^uy;V&4lHSnD("
-"<dCd_f^`G^vqPpFMO!F$glYm3NVOh%sWewib&!Pb_f$=gK0ZOjet77;7nd(RrN3Z4E4$vKOEE~Y3y(@{xGIx+KIR{4QY&3Y1Ij!8"
-"EZm>SHgk;_G~%d9TR8S@01lg?#<cHbeCfQl2}<p8_+h1~J>#C-9sRL>_F;epCFNDG53j9FbeFZMnehcgSVqK~7&*?}@NTecaFo>!"
-"s;5w-L9kmW3y*LUAMYeak8FZB&}f$s!>}Lu*q^yJ6_rm0^PP2AuPbFoTRtSTN{<7nD1R8?4SYPoU@VS{Ghu7wT8wu1+=Tf~h`5)~"
-">y<<hSNZ~1iiPL7Zy`Kac+Q-uw=f|KOz!B4PFc67%i^KPcA|o>9lOqu1k#IFj$uin6Npq2H7~Mf?)KEH&sZ3G{-au0ZJIvm`TI)^"
-"CcAk8Cbt9I-vo&7Jn^p7|D_ww{&)1!a>xo2pU+Xda;gtxJp#T`=e7j>zm!M9+B1yGL_3Q5P;os&bONcVw5AHb>4wX2mE+(=#rZpC"
-";<ta-TEkE=sfQL7a$+aPmK9`pN@>L3?_EmeSgQ(91LnRdc@GVQreuRg)T{>WIwwNWSP3f;lo&}3%fKQNC$JM!yRA3HWA%Y0gr_rl"
-"Q8L!YZUNKuk5R}8lyT~6d)2)V$LV{HlH1LF^awLl#>rKBLG_iVSE3QZM{c}IqRJ^f@h4LZHeM+5ga}Ec>IJJ}-2SP+SR5sLB8d06"
-"`KG#qcn^f4a`2)-eNM@9PnRQ_GiZ!xH@xd9&FVpu-Lo9up_M6HKvaUg<<eXq`(xsNiJc3W2wp<a^U4yrBoyW%3u5U=$#y&KB>Urw"
-"UwB(jY|K9Tr{Ac%Z#Z0hULvd~u3-Xy@roK=Xg4)co3m4C=m0_>*H-!mR>n)yH>J@URJn=#oV(nGMJ9l0{i0k(5&jTFoM~MkHDQoP"
-"{E5v3jt^z~yG>D#F^#xy!Bl&CZNPgSdxdB8EgCa8uzET4tp=7n4BW&)57_L`-tBTz7nn+_(-uq(`Q&o*xZA@tKMe)Zh$6+ovT}vd"
-"kstBz%a9v?nKYKytcnX&{s+?S25z$6oIUWQzT@D;aVH^{E{VYW8@4`WqnUCf@nEl$0f-f_(!+x7otj0loHu;;YGdK46>8T-M!hwf"
-";=uA3fUlz14u|#DK5-+!#{D#bdjNRJ0sA|cQKTt0vKlJe*hXYrq~rrrqP8#n*{@h06tsi%nJbot=62eo55j8MAJL49DyI(3GqJZJ"
-">1*kwnJIwOVlqN9gD%YsRBPiCvzE_3q+Dk;uStM6AxpbcO}OGh=bZ|2NzKL67!cE>OcYCiX&@dsVhRla=w^I}*+bM4WlgNDuA}D3"
-"Y0-K>6{s3l8J~q{wC-jEcidoioU4iqf`XQzdm9?PB_@ZU%kHTAwh)yIwhj=J@_VMT@c$*LQ*BWVC~OEPJ=6Mp%-(0PsT(^Xh6-E!"
-"#;kP_9R&S|`qy*Zmun5p^X}dtR^TH|6JL_AcH`<o^n7H9?Xi8ugk1|%u&JdE@D5yjEHjY&&gj|(&OMd2yhEqBh33)uUgnp|Je-je"
-"VsLRDG8L^r-x&!Wk{$;-ljY1z6%>(;s8uyWSeb{G-QZ#U@_|`Nr1x_XYJ<H5oyXL7o{$d#GMXbqxI$#585(nfO-a_tjkeqKT&NB7"
-"^{c?nZ6-M;BkqlwO)0hqQEdxi=Nv?J5vFB`G#|rkb*$DI6T66se8NxfIwxXR2d&e;-k(6kTbJE$G2<~LU`vM1$nBdJT~Q{=Y~ny{"
-"6Kx4Px?;X<M;N|jCu9?nKb3f53wg9p!1ISqLO2x0=ZKcBEW^$C!E7=EgJ$#_)um%la7%5sI2vF7ka#0@&K20!V4dOMzpV)lGUK%|"
-"1$Y%ngbrgs7IzsCh@0?P7N0iRT`gIJ7^3{F9Dzy)wP=-E6&713m%=NHWczFr%fe!mc<ollqGw+-*Aa9}(5x`mo+yu%uaJ}|O<e}y"
-"r+)e|TsVwW<W`Y$MHqrUS?Bk1i$JltdpQo^e9zdx?PqEgSlLm&DcA1%s|ZE0nBmF=)?vuP=-O#1q1uTP_m>#z<09cp`&3#i8H8|R"
-"ErMXa<eTCJ`&Qa>?UYjucWSmYIgY5lR08_;YmO;KoiN4`Wmn-4g0pg1k?{{Cp*aI=nVKxzIKh{C+G_k0TO~>v{2^BJ<^HJ(84)G^"
-"JgjBbsGKE=zNy?pXbwfMZXWm+VpNpumvq$R6;n5QR-e<mZl(RT<%ZN2_+PB;?Fcyhc%|zpONA<VWjwo1rQr2Z4$JabZWKJm;NnNM"
-"nd-siWEV9op4{xS289aIpdhwRE&H@Q<A!NbC<kdDSu3PxER2>kV$*IqSh31s+mjNe&HH}Sd{d_A%tOhNgCYi^u_!l}@qAgFJcO@`"
-"&>9WG_dh&5SNQPg&@abmkSX+$MW~`B)XqIN$N+rJ2}47{JBHxemV$hgJfHJzOHPoKXJ%w!+qQU_El@RU%q=c^lukmB1C9%r|6zv7"
-"1gVK5z;9OLEruYeI#P*?lslZxdB+^JmCBq1Ri>*RTaFu!UJUvf=(ol{H?{F<u@elcq{&bxM}(x<T!eweGh@IQ4$$vfLr2@Cw}e+o"
-"M`qhIMxumre-Bu&tK+S%!EH!xvu^=7cb@v2EdMOW7b@mRlk5cKecJMt)?5_u*T6aKmuY0kw}6llK}q{F?CYjvLK4%96f$TRuTwfu"
-"<QwZCY#$98hiK}zQ0lSaSveK@o6x4eQqN_1Q9RN0Zm0!OCV^<3<+kvV!jv_AKC8~=2dXZ#v!p;W6M*&9D`?Qy^ml9E05IK>-n4;~"
-"#Us@LrnX0Ip?)S*?!m~md|zA`{l2Q_Ag!IQG6?wE1)%|29cp4Uz;8w9e&<3ztux38aIT#pvofk4z_E0%s)zS3WnhB7@sHagXa*KE"
-"bd)~o7gp-Dg1Dk)!wdwpGrp*riq55J-~A;QOPyL<GzRg|_MtB7QBBS<VHG4#6NN^gTwXPw{<r=5psO?vf@V?E9lm6elfPNR$24Fz"
-"1sOIqFH&|J(~4ui7Ph^9bo9^$@C-F9xH)L7_-LOx2I0x(w9gqrSAz!KFY2&B^tfzxeMTYOgV(gU!(e!K)BP3UCTjgiKf7mr>X%|M"
-"uS_`Cr3^0>c39hb69>4g=dsKWyq3AZV|~4FBC<F2d$#cDD!Y}!ktGQ|gPv=IfsZ6sN}rSftxxU${!*7Dy7$B-^>&0VE9rMh$sEK5"
-"?G7!&gxfo%x^*#u@TS|)Z(~NFFrUUT7nBRe+tWU}R!2K0iA$jGEm74k)g8AxMvG{aw-{5j`1m&<N9Z^Oo<p$O`+MBOKNgoRmv9R^"
-"Z_uODA(ZK>*j)PviAKGa2Y!0C6T`%pRoRDsd>(BuGO(@|j+8i=+%>FX8G)(H%sy9=_6!pQ+uhw%3})M46-hR$y-BQwj)Uru-@TN8"
-"5@8hb&VYuk^C&o;GHZT_wb+^Sj`CfVb@T9vTN))5S!^p)lDRp9Cas#wK*Y<#FT7!(xaf`b_;ICO1l~6f;Fb$)J_9O?{cI5YeBW^i"
-"t<jXg0yF^~l%pX~u$fSu6#>jNR_et?2ceFeQ?BsGB~Fx)K31FggE<70W7>)0G_c{7H(+N}@3r(9<5Ef$kKTiuP05ka<+OeLEj#*_"
-"G`FIuoUz_DZhl>LVV~w;ikX0p9y?~c9O*8mgtQK&x522sQ&RzGxEAaja`SC`8SSy4O<=vT{_sja?rT0!wS%?ggfi@M{}^U_^5rX%"
-"it?4u<HnoeRJdD<*S+<2!81Q+yJyvHi12jJhwdMWk7j`0hg%<6gSW_!7ezA&X(MuGu8sYhx%j8=`H~F7)$spq6N$^!3?4LC!?xi#"
-"+r6S$C7eyM<P|qd!$Z!K`)D|?<AgT7wlKUM1*+irhJKtVXWbbtCqkbJ)bdH$mJ{!va93vFAd8=)9it1Apg`L8S&##?$6kOXnd$DD"
-"$COXb{HM$Br5PjNf?riE*KTf0S-JyS0S!;U-FNS#)^q2_5*emLsG#(vu+A;ntTPCZP5VDV>dv%<&CUELXl;b{Z<w{M0h~EXU($z7"
-"8<4S}hd71h#}&h=n0EnO^AU~}LL<->KCqawIj$)95BixDQZgw5s{7Ns*)1aI@*lExK2C#j18#0L0rsw2H5K|*ag&jF)TNs^n0~?Q"
-"|64xS%XG%WJFE>oqTCGne%S>|Z{T+#1^$q<n>dCSc*WELV=Dy+@`~R$hfr;DJ80>vTeqIpwqL+}4@5QR*2dqf>f7*e{I@}qq1Ow`"
-"0zqbK*%-aTt`DyGj6~j<+R+J>|CM3uL#^wiJ5`=j7wxu!f@F`J3HRIHo<#sz2OC;ObU+E^{qL6i>FV7J=YzIKXAuetPeZ&;ML@)}"
-"By(J1izyJ`FUBLY@6cV|5JK9N@F_KQ8F4ArQ--JBmDZ9F5g?&%$dFVhZ0gWue1&aRdI)5&ciR|*C($2#jn3C$Z^8Q_;iN46;F%xF"
-"De26#srW9{()}`0f`5Z}LN4a-v^e))i#-ReDqC#auUW$Gmsx71AU<YFhNLn3mi*#wlZ+{9q87XFX?9Kd#8HZSM>ogYqhiB@wKZMl"
-"O3^`8j@%6uwH}?fJu#QPOcR7fIXk2;6*k4cUl4bJ=mdse@hbNz;>W04l^bL+bt}=-eP{@Ill$%S^L<2MW;}@l+G!061$eYl4APUB"
-"?k>jkuwhW@ClO8<pJ=1f^qM-c&@xu}YLnFE?HJ6u&$>Wn@Bg1xqZkpMQWE&qv_<So=WhyNegLF!Pt}K9V0&T}TJBOLy{6He18rtR"
-"n=SRXjnRX$c4*s@QBTVw2BpF$d%>(kA<ao8N^vj2<$-rS8WZ?xatji5{94-Wf=k!Das^f663=~zW_%pyI_)p@4#kMYc0aRcz||Aq"
-"Lym~hByfUZ2O05+=z3Xl&8&VW0z(Rf4w2;DWER83T4%KD093K7{zQftWFH_VlRelyFdbRF$!SybZF}csOGZKb_!n4tk&9(rlX6Fv"
-"y3^vTV@6vvC%{a3@M?Oby1pSg#_h@47cS8$;PHo+5T|h4Of9KtvlUfws_pzscY5<aKbAkR=G^x$=@{Jz9ZB(&bNsds%ZZ_Zy<C~f"
-"fq2GmU6?|x<jX(?A2V|;u*B)#0WX(<HXB;~yu9uU(PqTD%>PSw+vpS{GzO$eR^?@1Tl?=uzE>A$WPm4@lXv%t&<NR(B;(UP-T%Qy"
-"oy>Ebuv1aDWm#!`B%?<6#|89!hOn1LZWiB8ke|4xmoWJ!>W8X{VX7f#g=6Q^+|H!Eob@BT7)4*^MK->M64bKvhI(CHi60wkuMqN-"
-"7vxBxw(=(deJ7Q}fQW^sk+|-&U<d`D{)&N#))tsEQ0w2d3J!Z?>aKk^kNt=?kpwoNd5zGPI(_ebcA(IPWY85{t8fLm*<d93miKAo"
-"lJSPw^?nXd|9js+VqaDJl-hggr8;82fH$-Qw@-IsH%`47pA2{JCv+<Oau@Ra+##&_i8R;jC8N&#TB5vfm{*aOlMjr8Rbqdy8_W=R"
-"oXeSsO1WJ8<9>%?pGKC;grJCdpXk&9(|m~I58(<jIKUf5nCP|kzWyQQbM5Wrh3_1;Nx4aObpifCTG2_S^(kGA?m{QqGkewo)9n9P"
-"Q&R^FCwF|4#6rP+t<n%ct*Tm-F@lpcBTV-fXxrSZ<M|I%Kl<7;*16jN6L@x_-WF}6jzERwWwABsuHc<Gs@#?1FWB%=5jm?NJ}HZ&"
-"3Kh(bkcVb-1YbSHvhzV&vw2147xvSps`~{2+hX*!?Um<1)39~&w)i5o)&;@F5NkyiSlCCVpvxrYJ8e>9W5G6|hI_LQ5r2f4E11O%"
-"DhV))yU|nb)#~jRJ7CV?E9a!w4QD<#aEu8(j)rQCtfvJn(L2Jo9d=5psOo)E;_oBD=n;dwe(SB#UF4*~I?ud4w*M8A(Xhc!&18XL"
-"bx_&4plt}aF1Pb+!`p(C7+KgD5K-AN|3&#jm27KWNL!RE$so0yA&bKYT~3oe<d9L$f&!{J7B0$(&>2aW!(2=phgZV79knw}^G)my"
-"z;KG@ZcB{4t;z7Vez9;^7l`2BRbw}7Tbp?AuN@enuN>T~pyz-_5&Sb$YffrqCatp7E_dT9$<oGD-@H(?Hbi5=BG=`L?>-ilV~$U_"
-"9f&AO_*&wKG?##)w%lp<+7#W3VnlI`U{jg-I|(f~lKf*l`27vImr!BSnak2!3Sg#?*a7o5$sq>XwsMHQ?%#k;n&v9mUM&HH)TuNs"
-"Z$KB*9qh%@EIkYQ<b~=0z&cl2kNyynQnoKi$j<|T3H(A{0|$)~?-Nk4Id#XT34(>M9!~4QXKy#1B+og48<{S?Z304YE>a;`(nWp$"
-"r*$u>#4F{x?HdyYsLw>ZQtZ$5_p_S7nM}oYm(&iyAgdQL*v_70k~Ff6*7uxBKpYV&AN6TS%Axh@oQB(vhGUP#l{c=vn<D~;_BwEn"
-"^77H$fhEGKT0fGw9n-P!w(Ac|&LGq~S|N!AtAD>Tyo9<pi5Yy6D%pzoY%ZC!083U^%#6|0$NEwa;ga4cfyr1ZnvTms>|eV@^y7iN"
-"t)WJBfLjL8c|8KFwi~NZ{#OcPaD0X5Vu;hWBKIJ|kLji#rFa&szySu^4<wJIl1z8^8=q2*1QMoBU>mpd6`!|%DwZ=2XHX=OPV83E"
-"niq_C)$M-xKDwhe93GMAW4`V-lyiu^RX^2d+xp<_?Ew&Gk{}}1u8qz1&m49Kw2>UyrjW!2ptswPoun?JQ(qnOmJRXC9SlUJ;u;UP"
-"N>j2l;ci#BqAFeg^k~BBno&TG*7vRS0e+k#i|W%+aCteqW<|`I?FX}rZ7Z+TdcRaWQmBp{kbM?LRD;(It1Nrq`f5n2bZN_mm=2(|"
-"xrgX(_lq;y-W94^9#{X;?-K^5Gzfk@ew?GFZPy9KMo=x-)kPwe!^jr6m-HtOBJhhy&ooyV%KVnVYA;s(QyL@W;R>H|6<X?Y(|jA{"
-"=TAA4<f1MnP1Rl5Y+VRmNOP<E--_$s#+3+mi?0Dd9GPPX12iMGH2s9Zx=3~L_fk+iQ5XSwLk`x<Wx_An@r@=RD3i;~D9jQwQK2dU"
-"Ix6~)oup=b{{yaHvL&C;a$Ka9S~8`W$^lTR+DBy>dvBnZkt_(tqgVD%rvGw^8X{3)V=%JY1&(T%RtqC0Y^jJ%6*^OGcs&`nC9M}Z"
-">iV|nuOzLXplerSuIYcW4xXd*tH1WWd{-B?)$9MAFoH_e?EL{iyixbVO|-gkzP!b5)FqVxFh`r^b5#mAg6PU3tAvP@fmJ@Z^G2}Q"
-"kn_VO9d&+$a`9gV?3^Oe-uv5l^E+}L>j;Xcm9l!lAH(VOFaAMA*9lQw*DIzP?SlYy#8{SaWx#Zr+Xj7GWH}721Zy%65mH*#>M+s9"
-"r-<;!G%-@RPB^K!%;b5;E;B05!=a&o+UIJjqmU_^PDDyq%Hf$yTXrM_#ib!p7xsAjvz6@KpaC0gKV(&T_dQeCK?@OT&Y(JtpzMh+"
-"bM=#VpVBS#P090xS%ql?cl`<F2+{_M-&zd_yu#=H&y~mDmQ*_hGZ@rTgJxK!)36EX?ad!LG7fz)mNEf+BxK?$+;6UjZ}2IN9u#fN"
-"_a@gQzdYvpGh!lD;v>}s^o)~ItHvd=_d-@DZ`y*egN)Ds>y7pcHt33e6E<F5C|9^PNTdY>f3wu-fwNliwQ|v?2(sP|h%b(`nfSEE"
-"kcA4X#khqCh&5gxbmx8aPo&KW8CX}ZW$i>33eL5oYFI!X?v<%pPWuhUc}!jAJ{S8^dIu(+j$}Q*6qFLGLL+f`$u;(7n)x*|13OCR"
-"Qm4Ita84jbx59c}C5LGN%l&`C=xJAIC1lv;M}2EYdM7+b!KW8PB!w0>Y*?LqQE%?@cqE^n0P5QTJk19@t&#?0U<y0kJFaOO>`XfG"
-";2Rv!>2eoH1J*INznnu$L%^?U?vlKqmNpdi_b9GI`qVjllYC)|EA!U|5b?~)S)WPd*x1q=T_A0--EHUATcQ&Y&dH=7Q58xm)W4OA"
-"t?Yp;-|Z9EPNoq7N|~Ex&2xcO>GV||I^z}GNq-S!p@En+;%(y?P0MT+#@jo##R~G1Ay1G{hbB)J7%Xy78bazOx#MIG*7x3MO+lQ)"
-"YC*C<FqOM0WNK#^VgZTk=~=C0+Y?yqV4r_#$goW*wy%_d05F5dC<vhPILqF9Eu!GaEL0;=()*c%L{veB8yeE<Oh;x}8^wH%wl=Ns"
-">wX7EkIrAHy>bUz5kI#{P5Tp;l6W97m@ay#R+)i%YoRLz@dZD2Knd;!DyVs<sR)cNs>w86M#Kts_8FgA=N#(>g?rGOk=52Bto#}-"
-"pf9}M(4tgh+~H1m_pEq|tUDru?)d)kLUtE3w8^+#Q?S&A%iO(;-M8=gGTB0Nzah@1QKSfxbzp=KmH!3IDjtMqtN>pwM-W0Sxh(ph"
-"(Me|~@Z7qwBEdqmp1YW)PH4&L)HHxV)YE2Xh-<Ctg{YJ%K!41vKD6@#wT`LV+gw)HXzx^6Md_z;CT^y#XEc>YE}?x<fi0s3-1e{J"
-">s=ol!NwOXTHLbX$u&#^8rgRv*C>^ca6^D_02I}|mMHiy?HjvjZwy@fMviy}L#5XhcR>D|`{S2lPn3+drB?j7HaDlEgO**1OW&}U"
-"9-sUb1%~0U*u6~_>vjm(_1+hdJlsbMZ@gn};I!FFbwZXtxqF7l<k)i9h2H4iwiTfc$LKW><G`+O^~{e6EF47rq=F-&>Y0%oq+x5w"
-"Y7u(bLi3TaoP4t(^yF$><D8p9u`rqpT#Qn$)4}0d(+tY6elr<^lqm7{Mv!1%_EYHVk+}xfLj58Gwy$YDJ|}}W3`YksE4wQZwVfo%"
-"p%vBGVkM$(Zuze#Kqo>+`61Ovenw996H*Z96)4bj_N`zzyc>0Q8E=Q#op#AK9=dYK4ad;K_x4rH1z<5MW>?#Ao6TF0jvWYVfUL5r"
-"s>i;oHBz{^f`7~OPaimp{H+X=LAUk$Q!*Wz3J=ZLC<RL(uXV36%`LB+i@PS3TxOO`>Ls|sfnn@dxB8{QuR=vlEW3s}iF6#X$c|VG"
-"4DbeFo{iRi!D>&e3~~uCFf5|J8l)l%4;q0N^>o9q(Tw!djX)^nR-NDnqXdME%S$cxt;%mz^K8Bd;!}0l^|33Ip@21JZ@BI|6WU4$"
-"Tjpol3P4;k%D9^k^bZlu1s8pPQxXeUT*I8aCm4-f);%o=e*S*nl&O>pw-;cs1A<|dVwe<(_7rhwO%L%7E=s&jP%)_w(tz{g25$ta"
-"cOIzBl^O#PdO5#+qRFAqoG}blLMJxHDgheiw5K~r@BuDVkIREbCVURH?okW9#sUBRj~QnG9kHbpGGjcsS-n|<#+_=6NDhU|g{;_~"
-"sjhAso|VR`A)o88LrB69tN99#ShY$_dlM&Dz~7$-!@`HsVVq=qM=HE(4YU8p!_EeI@`G3sZEl(=F33aKE869Q3*UbW`xAdZz1DGe"
-"7ZiC-+pU*kkxIe5UDLMry>^T70}QD%!h1lg1V+yyFV+->a>cg`FK3{YiS-U`t@XC<5mb`Ez$_hsA%C}7GqChdFqHSJ3EbPTm!xy&"
-"tB|X!`>^hA+`P?<noi2z{a#1LPGD^ih6Dku1py_$UY%4}cy9D|Z97X;(+nDItu{o##q#qHFJ;piC%Pbk!~RIWHzus+@l{fLL0uep"
-"Ukp<f%A~B>rF!1(c^Ty<o~ZzB6?N!Ay9TS%4Ul@qQ@1DtC;y0nLeG-ZH6Op0cS<3HGMP5%^Pz1FUV~6eJ)vk;+jptse&eQHQue|3"
-"!TNE$Sfo8uN8aDR3M6b)a^A0plaj#Ku;udEwn!p-?LllUlRpZ~3iOhL()7*3{75c;<19=Ey9F|EgH7NoQRsse#CNcsFvs~*!~v;{"
-"OZfL5Z^t>EJD2bYRUVJsElTN0<J639vn_8B!!(X%qWf94+I`2~vAaPb3p@sakL@GrtC@GC*~l0%3g#yJL0|gVxi+t+4|p8vK8EU?"
-"RjxYbXr?_Ag<S`$_vEsCVgcb@XS;Tz?!H8Fw_r5r*_P_oxw9tjN*ipT=XdY$>W<7eHWTm;z94eu!wS`zY|neZR5~=VWe-Ctwr?}#"
-"|3c|laSUy2VClY@VO&&9V@}a!jMySD0DMsIqqGM`^+;UorQfXLarh__^|1ri*AnCGVPiMMam*XDSmS)W6#gxR%5z1d@P#kE(MR~8"
-"5P$oAut_hU@y0aF<8OiOzQPb~4ZYfMV}AU78fKj|X=vfytM?x|*T5uugs%kaJ~Rr+MnBFI?qC*euBm=P@dfvAKAjkj|017wIhqd%"
-"fdwS7XzQd2NN+4t0=@wAqlKcdtp-k%8PZykI>wqG<A%rct>u`19S}eQUiVE7q0qF;5?WZ_WL{p~M?=ajdW3iV`zrasGn}W@i)yt9"
-"j74CZV-kwmMpeEKy#M4H@yQQdihZ9&)AS|IM3tz39vLXEtvTkF@lbqdB>PkO*%(!&yUsaEW`N_epnRNR8DpB^$OB=r(*mw;Eg0E2"
-")hW%1O*7iH!!S#z3VR#7veYdHhX)~r4yIhf3+Hh_!fXdr0AUy4#@IABw^p}=xdUGQ3X%KZ7Uu3$GOSHhXFO;Xx|gf`>)kz5W%iMg"
-"@6=gvPaU3p9P$7DY*0<qbgu6X$hn$mQGr8l_ok{t^c%=XFjRs*Us8}uS9yo+kYqC%^|?wkOY5eA(IsVv)!+G&E=7hX+qjdmo#qo9"
-"51_riDp6U_P$Bg==xhEOn`hrE$?e|+Ib<@h9&4?;1ShAs+a^Ebt(DcIn)y|%vDs^LalQzUYnthcFaxA!n_dhG)!N#J14RwOZ8p?~"
-"*$hkeRLIURoR*%o4BQ-Mn)+8*-$v#tDO$q6I}jzJb_2Mksh)4ObG8UWOHoK<+!AK<IRG`AhLP@xzvlU+5+i{3{pA1>ZXFw_@oRC#"
-"H4|DopOXu)1?dgtayj0{{pj0>M6H~wAM@Bk99TMAV|$yab@bZ2&h_=Oy6g$UrMBBlS$Mt+ER1}|6lt;VHR<&uep;An9WNU48-q`U"
-"DZmjOZERCV5wn9iM_OzeyAS9brw!48WU~s!nMtjPHxw{O;kly8I%P(?Ya&v{gVa>*%s`#@_#7JFGY@6Kf?W%o0&!f}8zT{IL?m%t"
-"r>wICK5nU-@&h)FNd>rn!SonT_IQ|tzOoP}CnU{6cwJKA<~t4!;v~aUbDDx5`A5;-6|K&}TpLZE`gUhq`lFbaQiXbtKru`X9n_3*"
-"wx0lq9B_QJU<oIyf}ox$xUtoMalu@!@ofLJ!sGHF8nKd5ClLV_I?^9Ml7Fy{MDQr%Q^wi;RO|7Nj>MGQoDD1yDuD=Rev+PRl+Ee2"
-"`qiqRwvII8Qb2H39PoXnKX0LN`X8tsC)W~=8#*6U!Rnz&RE;07iE#7b`%cSYAka{hnm<)!j0qXRm#U#>jHoyUA_#~g05AnCHwycb"
-"08W>Q?mg^9W!A(w`>43V4bT!%bq<ftX&x>@5GJ_F8rS8Hr*dO3pBg=6Ws9no{7e<l4a%D{tfXkbH!TJ?Do-}C>0JNdx$J$$sOd2>"
-"?*IT>xWYK_U79#7ZvB<Fs~VHy%<t`OA?ZK|uqN_HJO*{I3ULw<!iN?*Zg~VFNU<pDj9Jq-imGETI*t2hk%>JNX3r#(MAUGPaEKI`"
-"sG4nIlbR5BJ?ey(!XHOrLQfKpc(O`ZC8H%tJA&~0H+Twu()oi^lYr3w7MV9*I*Am4z^7nDIxkl<tTigX;ELr0O~-*`mdK=8*p?wP"
-"JnxOGj~EN;xxf8>I@<@vg39U(xNexsj(qtKhV@2Qad<fXX`e2&y!*lLZRM`L7x_j`o8_F_OmtTA@QdU>c>y?zAUg@Yk|RqN%sCa&"
-"^wJ;aHfG#{XFg|^J?P=@c&xb#xt%tcLW!jL*RP?T7rs&$b3GZl`>OS~-FSYI(kWF)N@wu3lQm0^;i=D^(vDKOIlBo-Y}@~FRTAA("
-"su1j1Irc)DXsrH!^5<WQ=TM}W=hz4&p7Ydt(x*Q8Y=1ygECOE)Nm?p&4(t(A$$n`$h>9n|G6N~235{;-Is)_|o=hCCGtDq0GbbpZ"
-"9C>9Z?w8a5=a>_0N=gC2S7%ZI{_Th@&c{WtCGYJy08l+(2H9}Nn6o;()tF2XC_qUElYGc`7GkS8fep>I%N!b0T_-i*F|F?Q%;sw{"
-"#!FF1qZCPhCvw1}it+A<kH7*~+|$*J8$4&7@ci4jNZ~W2l;hQ_(~I_uX{3M?w8(B3H;&y|9s;l{8qWl4B@nRH8EJA220SM?yNM|o"
-"%+2Im(*d^0Mo9b=P-8+3%lq1K5{$O-T4=s%Z-CxGiHws<5Hy4Q)ZJag1v|r0F+I2{T;pg^N)#|rx0bSy;{_g&m_rnH7!Xt=xDyTj"
-"Srl{z&Esr|^iC;>8YC=-9@tF4EO^L~3$#T3si*JEjh$ihT6sB~gN%!!ThA4btP&_irAO`%p{6v=ix3+%*TbLki6&>oANlmR;m0+#"
-"IjFai)dJJ6pKJTQ!FA$Ry_iT$Ym$X5JZ4pTB&J=0qybQ-<lpD~Df8*o9?m^~HgG;Qiu2>9j_B5HZCVHnX_Puwpf$N$Aqd#M)Kb$q"
-"cSQMaX^{NZA)iW1H#2~Z4q9UE{4w|QQH>Ph7aNFh7G8X<QXk`)2DX_1=3Hou2@^OPJ0S>SY+;*S8;xT#4j(250~T@jsTDU|Pdk;N"
-"a|V`+7SY~g!(JcB(0^g}6R0@P+WluzFY`wsLRgRs+0JZ!`#2>V2&=?5n`IG~imq>%>0a-gA)FKr`VdHxf5WVe@z2~W@B_K!a{$GF"
-"k{)^2F!{VgN(MCVlHV9b8mEFdOqU0cC8Lq_N`GTIv{LfyQHfO!F1KM2E}m)ytaZyh@*D-HzjC?|N;kp8w>7#dEBpNV0Ad?yrQqgC"
-"clzP@j5g=o4^X;!2+cQ@+2HV=e=>BE|Kp0+GPfu8dTsCEgAWXr9j%M%;src(1HZwN7Kk?8P*Q}kO>0ZQ-R=)cL!;h?Ub`7kd*c1u"
-"O8-+eu4jVI`$?V?mFGq>dHF{TfrRp&&KqZlmogphm8$tx-Y(eJ|6G=0f=7XWc<(RN3B^=tiZGk+>ByWVK}<Pf#0opPtTH!iJo<?-"
-"xUxIpqcD8Uq@a|!D}9R%W#o;#p@$?ue8t>N0SwZDj9L8yczTE?Z7Iu+(nq^-I4p9L8_s*Eni(TfxXqMY4T;TaOEJ(UBZy);N+Ta|"
-"t!$nTi3BID4wbz}`&WoD6)jSd_Wo(yUwzQG6`(F6!4IJWZ1#B$V6x1lMH<%-K<1K8WZ=Kf@XHEcP1`1XUF`P9%GdqlYuxLTPSCyy"
-"&ffavGQ1XLxn4F`yreUqeSQ}H0l?NC!qCLz)d6-+3W~5BE4lQnkY>xlr7(j*Nryz1OysyevU-lFCEr6sm@E!xi<ixuM3g!{4_`Ma"
-"z<o1<djX$IJOWiY_{Gq_0tKKj-kW_#Yz~VWnYlFzK1r0663soO3{C(")),format=L.FORMAT_RAW,filters=[{"id":L.FILTER_LZMA2}]))
+from __future__ import annotations
+import copy
+import glob
+import io
+import math
+import os
+import random
+import subprocess
+import sys
+import time
+import uuid
+from collections import OrderedDict
+from pathlib import Path
+import numpy as np
+import sentencepiece as spm
+import torch
+import torch.distributed as dist
+import torch.nn.functional as F
+from torch import Tensor, nn
+from torch.nn.parallel import DistributedDataParallel as DDP
+try:
+    import triton
+    import triton.language as tl
+except ImportError:
+    triton = None
+    tl = None
+try:
+    from flash_attn_interface import flash_attn_func as flash_attn_3_func
+except ImportError:
+    flash_attn_3_func = None
+try:
+    import zstandard as _zstd
+    _COMPRESSOR = "zstd"
+except ImportError:
+    import zlib as _zlib
+    _COMPRESSOR = "zlib"
+
+if os.environ.get("TORCHDYNAMO_SUPPRESS_ERRORS", "0") == "1":
+    import torch._dynamo
+    torch._dynamo.config.suppress_errors = True
+class Hyperparameters:
+    data_path = os.environ.get("DATA_PATH", "./data/datasets/fineweb10B_sp1024")
+    train_files = os.path.join(data_path, "fineweb_train_*.bin")
+    val_files = os.path.join(data_path, "fineweb_val_*.bin")
+    tokenizer_path = os.environ.get("TOKENIZER_PATH", "./data/tokenizers/fineweb_1024_bpe.model")
+    run_id = os.environ.get("RUN_ID", str(uuid.uuid4()))
+    seed = int(os.environ.get("SEED", 1337))
+    val_batch_size = int(os.environ.get("VAL_BATCH_SIZE", 524_288))
+    val_loss_every = int(os.environ.get("VAL_LOSS_EVERY", 4000))
+    train_log_every = int(os.environ.get("TRAIN_LOG_EVERY", 500))
+    iterations = int(os.environ.get("ITERATIONS", 20000))
+    warmdown_iters = int(os.environ.get("WARMDOWN_ITERS", 3500))
+    warmup_steps = int(os.environ.get("WARMUP_STEPS", 20))
+    train_batch_tokens = int(os.environ.get("TRAIN_BATCH_TOKENS", 786_432))
+    train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
+    eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 2048))
+    max_wallclock_seconds = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
+    qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 1.5))
+    vocab_size = int(os.environ.get("VOCAB_SIZE", 1024))
+    num_layers = int(os.environ.get("NUM_LAYERS", 11))
+    num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
+    model_dim = int(os.environ.get("MODEL_DIM", 512))
+    num_heads = int(os.environ.get("NUM_HEADS", 8))
+    mlp_mult = float(os.environ.get("MLP_MULT", 3.0))
+    tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
+    rope_base = float(os.environ.get("ROPE_BASE", 10000.0))
+    logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
+    embed_lr = float(os.environ.get("EMBED_LR", 0.6))
+    head_lr = float(os.environ.get("HEAD_LR", 0.008))
+    tied_embed_lr = float(os.environ.get("TIED_EMBED_LR", 0.035))
+    tied_embed_init_std = float(os.environ.get("TIED_EMBED_INIT_STD", 0.005))
+    matrix_lr = float(os.environ.get("MATRIX_LR", 0.025))
+    scalar_lr = float(os.environ.get("SCALAR_LR", 0.025))
+    muon_momentum = float(os.environ.get("MUON_MOMENTUM", 0.99))
+    muon_backend_steps = int(os.environ.get("MUON_BACKEND_STEPS", 5))
+    muon_momentum_warmup_start = float(os.environ.get("MUON_MOMENTUM_WARMUP_START", 0.92))
+    muon_momentum_warmup_steps = int(os.environ.get("MUON_MOMENTUM_WARMUP_STEPS", 1500))
+    beta1 = float(os.environ.get("BETA1", 0.9))
+    beta2 = float(os.environ.get("BETA2", 0.95))
+    adam_eps = float(os.environ.get("ADAM_EPS", 1e-8))
+    grad_clip_norm = float(os.environ.get("GRAD_CLIP_NORM", 0.3))
+    eval_stride = int(os.environ.get("EVAL_STRIDE", 64))
+    mtp_num_heads = int(os.environ.get("MTP_NUM_HEADS", 0))
+    mtp_loss_weight = float(os.environ.get("MTP_LOSS_WEIGHT", 0.2))
+    muon_beta2 = float(os.environ.get("MUON_BETA2", 0.95))
+    swa_enabled = bool(int(os.environ.get("SWA_ENABLED", "1")))
+    swa_every = int(os.environ.get("SWA_EVERY", 50))
+    lawa_enabled = bool(int(os.environ.get("LAWA_ENABLED", "0")))
+    lawa_k = int(os.environ.get("LAWA_K", 10))
+    lawa_freq = int(os.environ.get("LAWA_FREQ", 100))
+    muon_wd = float(os.environ.get("MUON_WD", 0.04))
+    adam_wd = float(os.environ.get("ADAM_WD", 0.04))
+    qat_enabled = bool(int(os.environ.get("QAT_ENABLED", "0")))
+    bigram_vocab_size = int(os.environ.get("BIGRAM_VOCAB_SIZE", 2048))
+    bigram_dim = int(os.environ.get("BIGRAM_DIM", 128))
+    trigram_enabled = bool(int(os.environ.get("TRIGRAM", "0")))  # TrigramHash (off by default, risky)
+    xsa_last_n = int(os.environ.get("XSA_LAST_N", 11))  # XSA on ALL layers (our novel contribution)
+    rope_dims = int(os.environ.get("ROPE_DIMS", 16))
+    ln_scale = bool(int(os.environ.get("LN_SCALE", "1")))
+    dtg_enabled = bool(int(os.environ.get("DTG_ENABLED", "0")))
+    late_qat_threshold = float(os.environ.get("LATE_QAT_THRESHOLD", 0.15))
+    ve_enabled = bool(int(os.environ.get("VE_ENABLED", "1")))
+    ve_dim = int(os.environ.get("VE_DIM", 128))
+    ve_layers = os.environ.get("VE_LAYERS", "9,10")
+    gated_attention = bool(int(os.environ.get("GATED_ATTENTION", "0")))
+    value_residual = bool(int(os.environ.get("VALUE_RESIDUAL", "0")))  # VRL with sigmoid gates (off by default, risky)
+    attn_scale_init = float(os.environ.get("ATTN_SCALE_INIT", 1.0))
+    mlp_scale_init = float(os.environ.get("MLP_SCALE_INIT", 1.0))
+    resid_mix_x_init = float(os.environ.get("RESID_MIX_X_INIT", 1.0))
+    resid_mix_x0_init = float(os.environ.get("RESID_MIX_X0_INIT", 0.0))
+    complement_alpha = float(os.environ.get("COMPLEMENT_ALPHA", "0"))
+    ngram_eval_order = int(os.environ.get("NGRAM_EVAL_ORDER", 0))
+    ngram_eval_min_order = int(os.environ.get("NGRAM_EVAL_MIN_ORDER", 2))
+    ngram_eval_alpha = float(os.environ.get("NGRAM_EVAL_ALPHA", 0.30))
+    ngram_eval_adaptive = bool(int(os.environ.get("NGRAM_EVAL_ADAPTIVE", "1")))
+    ngram_eval_alpha_min = float(os.environ.get("NGRAM_EVAL_ALPHA_MIN", 0.05))
+    ngram_eval_alpha_max = float(os.environ.get("NGRAM_EVAL_ALPHA_MAX", 0.60))
+    ngram_eval_entropy_center = float(os.environ.get("NGRAM_EVAL_ENTROPY_CENTER", 4.0))
+    ngram_eval_entropy_scale = float(os.environ.get("NGRAM_EVAL_ENTROPY_SCALE", 2.0))
+    ngram_eval_min_count = int(os.environ.get("NGRAM_EVAL_MIN_COUNT", 2))
+    ngram_eval_buckets = int(os.environ.get("NGRAM_EVAL_BUCKETS", 4_194_304))
+    ngram_eval_max_seconds = float(os.environ.get("NGRAM_EVAL_MAX_SECONDS", 0.0))
+    ngram_entropy_shift = bool(int(os.environ.get("NGRAM_ENTROPY_SHIFT", "0")))
+    ngram_order_mults_str = os.environ.get("NGRAM_ORDER_MULTS", "")
+    cubric_cadence = int(os.environ.get("CUBRIC_CADENCE", 0))
+    skip_final_eval = bool(int(os.environ.get("SKIP_FINAL_EVAL", "0")))
+    post_ema_diagnostic = bool(int(os.environ.get("POST_EMA_DIAGNOSTIC", "1")))
+    compile_enabled = bool(int(os.environ.get("COMPILE_ENABLED", "1")))
+    compile_mode = os.environ.get("COMPILE_MODE", "").strip()
+    compile_fullgraph = bool(int(os.environ.get("COMPILE_FULLGRAPH", "1")))
+    mlp_kernel_mode = os.environ.get("MLP_KERNEL_MODE", "").strip().lower()
+    loader_mode = os.environ.get("LOADER_MODE", "sequential").strip().lower()
+    coprime_max_loaded_shards = int(os.environ.get("COPRIME_MAX_LOADED_SHARDS", 4))
+    coprime_shards_per_batch = int(os.environ.get("COPRIME_SHARDS_PER_BATCH", 4))
+    coprime_shard_hold_steps = int(os.environ.get("COPRIME_SHARD_HOLD_STEPS", 64))
+    # INT6 GPTQ post-training quantization
+    gptq_enabled = bool(int(os.environ.get("GPTQ_ENABLED", "1")))
+    gptq_calib_batches = int(os.environ.get("GPTQ_CALIB_BATCHES", 64))
+    gptq_block_size = int(os.environ.get("GPTQ_BLOCK_SIZE", 128))
+    gptq_clip_range = int(os.environ.get("GPTQ_CLIP_RANGE", 31))   # int6: [-31, 31]
+    gptq_reserve_ms = float(os.environ.get("GPTQ_RESERVE_MS", "10000"))  # ms reserved for GPTQ
+
+
+def maybe_compile(fn_or_module, *, enabled: bool, fullgraph: bool, mode: str = ""):
+    if not enabled:
+        return fn_or_module
+    kwargs = dict(dynamic=False, fullgraph=fullgraph)
+    if mode:
+        kwargs["mode"] = mode
+    return torch.compile(fn_or_module, **kwargs)
+
+
+if triton is not None:
+    @triton.jit
+    def _leaky_relu_sq_forward_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+        pid = tl.program_id(0)
+        offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        a = tl.where(x >= 0, x, 0.5 * x)
+        y = a * a
+        tl.store(y_ptr + offsets, y, mask=mask)
+
+    @triton.jit
+    def _leaky_relu_sq_backward_kernel(x_ptr, grad_out_ptr, grad_in_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+        pid = tl.program_id(0)
+        offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        grad_out = tl.load(grad_out_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        a = tl.where(x >= 0, x, 0.5 * x)
+        slope = tl.where(x >= 0, 1.0, 0.5)
+        grad_in = grad_out * (2.0 * a * slope)
+        tl.store(grad_in_ptr + offsets, grad_in, mask=mask)
+
+
+class TritonLeakyReluSqFn(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x: Tensor) -> Tensor:
+        if triton is None or not x.is_cuda:
+            a = F.leaky_relu(x, negative_slope=0.5)
+            ctx.save_for_backward(x)
+            return a.square()
+        x_contig = x.contiguous()
+        y = torch.empty_like(x_contig)
+        n_elements = x_contig.numel()
+        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+        _leaky_relu_sq_forward_kernel[grid](x_contig, y, n_elements, BLOCK_SIZE=1024)
+        ctx.save_for_backward(x_contig)
+        return y
+
+    @staticmethod
+    def backward(ctx, grad_out: Tensor) -> tuple[Tensor]:
+        (x,) = ctx.saved_tensors
+        if triton is None or not grad_out.is_cuda:
+            a = F.leaky_relu(x, negative_slope=0.5)
+            slope = torch.where(x >= 0, torch.ones_like(x), torch.full_like(x, 0.5))
+            return (grad_out * (2.0 * a * slope),)
+        grad_out_contig = grad_out.contiguous()
+        grad_in = torch.empty_like(grad_out_contig)
+        n_elements = grad_out_contig.numel()
+        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+        _leaky_relu_sq_backward_kernel[grid](x, grad_out_contig, grad_in, n_elements, BLOCK_SIZE=1024)
+        return (grad_in,)
+
+
+def leaky_relu_sq(x: Tensor, kernel_mode: str = "") -> Tensor:
+    if kernel_mode == "triton_act":
+        return TritonLeakyReluSqFn.apply(x)
+    a = F.leaky_relu(x, negative_slope=0.5)
+    return a.square()
+
+class TrainNgramTracker:
+    """Complementary training: track bigram stats, downweight tokens n-grams can predict."""
+    def __init__(self, vocab_size: int, device: torch.device, complement_alpha: float = 0.5):
+        self.V = vocab_size
+        self.alpha = complement_alpha
+        self.bi_counts = torch.zeros(vocab_size, vocab_size, device=device, dtype=torch.float32)
+        self.bi_totals = torch.zeros(vocab_size, device=device, dtype=torch.float32)
+    @torch.no_grad()
+    def update(self, x: Tensor, y: Tensor):
+        xf = x.reshape(-1)
+        yf = y.reshape(-1)
+        ones = torch.ones(xf.numel(), device=xf.device, dtype=torch.float32)
+        self.bi_counts.reshape(-1).scatter_add_(0, xf * self.V + yf, ones)
+        self.bi_totals.scatter_add_(0, xf, ones)
+    def get_weights(self, x: Tensor, y: Tensor) -> Tensor:
+        xf = x.reshape(-1)
+        yf = y.reshape(-1)
+        total = self.bi_totals[xf]
+        count = self.bi_counts.reshape(-1)[xf * self.V + yf]
+        ngram_prob = count / (total + 1)
+        return (1.0 - self.alpha * ngram_prob).clamp(min=0.1)
+
+# --- Batched Newton-Schulz orthogonalization ---
+
+def zeropower_via_newtonschulz5(G: Tensor, steps: int = 5, eps: float = 1e-7) -> Tensor:
+    """Batched Newton-Schulz orthogonalization. G: (B,M,N) or (M,N)."""
+    a, b, c = (3.4445, -4.7750, 2.0315)
+    was_2d = G.ndim == 2
+    if was_2d:
+        G = G.unsqueeze(0)
+    X = G.bfloat16()
+    transposed = X.size(-2) > X.size(-1)
+    if transposed:
+        X = X.mT
+    X = X / (X.norm(dim=(-2, -1), keepdim=True) + eps)
+    for _ in range(steps):
+        A = X @ X.mT
+        B = b * A + c * (A @ A)
+        X = a * X + B @ X
+    if transposed:
+        X = X.mT
+    if was_2d:
+        X = X.squeeze(0)
+    return X
+
+# --- Parallel Muon optimizer ---
+
+class Muon(torch.optim.Optimizer):
+    """Parallel Muon: post-backward reduce-scatter -> local NS5 -> all-gather.
+
+    No DDP for bank params. After backward, this optimizer:
+    1. Launches async reduce-scatter for all banks (biggest first)
+    2. Returns control so Adam can step on small params while RS is in-flight
+    3. Waits for each RS, runs local NS5 on the shard, launches async all-gather
+    4. Each all-gather overlaps with next bank's NS5
+    """
+    def __init__(self, params, lr: float, momentum: float, backend_steps: int,
+                 nesterov: bool = True, weight_decay: float = 0.0):
+        super().__init__(
+            params,
+            dict(lr=lr, momentum=momentum, backend_steps=backend_steps,
+                 nesterov=nesterov, weight_decay=weight_decay),
+        )
+        self._built = False
+
+    def _build(self):
+        self._distributed = dist.is_available() and dist.is_initialized()
+        self._world_size = dist.get_world_size() if self._distributed else 1
+        self._rank = dist.get_rank() if self._distributed else 0
+        ws = self._world_size
+
+        self._bank_meta = []
+        for group in self.param_groups:
+            for p in group["params"]:
+                B = p.shape[0]
+                padded_B = ((B + ws - 1) // ws) * ws
+                shard_B = padded_B // ws
+                tail = p.shape[1:]
+                dev = p.device
+                self._bank_meta.append({
+                    'p': p,
+                    'B': B,
+                    'padded_grad': torch.zeros(padded_B, *tail, device=dev, dtype=torch.bfloat16),
+                    'shard': torch.zeros(shard_B, *tail, device=dev, dtype=torch.bfloat16),
+                    'shard_mom': torch.zeros(shard_B, *tail, device=dev, dtype=torch.bfloat16),
+                    'full_update': torch.zeros(padded_B, *tail, device=dev, dtype=torch.bfloat16),
+                    'scale': max(1, p.shape[-2] / p.shape[-1]) ** 0.5,
+                })
+        # Sort by size descending -- launch biggest reduce-scatters first
+        self._bank_meta.sort(key=lambda m: -m['p'].numel())
+        self._built = True
+
+    def launch_reduce_scatters(self):
+        """Phase 1: launch async reduce-scatter for all banks. Call right after backward."""
+        if not self._built:
+            self._build()
+        if not self._distributed:
+            return
+        self._rs_futures = []
+        for m in self._bank_meta:
+            p = m['p']
+            if p.grad is None:
+                self._rs_futures.append(None)
+                continue
+            pg = m['padded_grad']
+            pg[:m['B']].copy_(p.grad.bfloat16())
+            if pg.shape[0] > m['B']:
+                pg[m['B']:].zero_()
+            fut = dist.reduce_scatter_tensor(m['shard'], pg, op=dist.ReduceOp.AVG, async_op=True)
+            self._rs_futures.append(fut)
+
+    @torch.no_grad()
+    def step(self, closure=None):
+        """Phase 3: wait for RS, local NS5, all-gather. Call AFTER Adam steps."""
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
+
+        if not self._built:
+            self._build()
+
+        for group in self.param_groups:
+            lr = group["lr"]
+            momentum = group["momentum"]
+            backend_steps = group["backend_steps"]
+            nesterov = group["nesterov"]
+            wd = group.get("weight_decay", 0.0)
+
+            prev_ag_handle = None
+            prev_m = None
+
+            sharded = self._distributed and hasattr(self, '_rs_futures')
+
+            for i, m in enumerate(self._bank_meta):
+                p = m['p']
+                if p.grad is None:
+                    continue
+
+                if prev_ag_handle is not None:
+                    prev_ag_handle.wait()
+                    pp = prev_m['p']
+                    upd = prev_m['full_update'][:prev_m['B']]
+                    if wd > 0.0:
+                        pp.data.mul_(1.0 - lr * wd)
+                    pp.add_(upd.to(dtype=pp.dtype), alpha=-lr * prev_m['scale'])
+
+                if sharded and self._rs_futures[i] is not None:
+                    self._rs_futures[i].wait()
+                    g = m['shard']
+                    buf = m['shard_mom']
+                else:
+                    g = p.grad.bfloat16()
+                    state = self.state[p]
+                    if "momentum_buffer" not in state:
+                        state["momentum_buffer"] = torch.zeros_like(g)
+                    buf = state["momentum_buffer"]
+
+                buf.mul_(momentum).add_(g)
+                if nesterov:
+                    update = g.add(buf, alpha=momentum)
+                else:
+                    update = buf
+
+                update = zeropower_via_newtonschulz5(update, steps=backend_steps)
+
+                if sharded:
+                    prev_ag_handle = dist.all_gather_into_tensor(
+                        m['full_update'], update, async_op=True)
+                    prev_m = m
+                else:
+                    if wd > 0.0:
+                        p.data.mul_(1.0 - lr * wd)
+                    p.add_(update.to(dtype=p.dtype), alpha=-lr * m['scale'])
+
+            if prev_ag_handle is not None:
+                prev_ag_handle.wait()
+                pp = prev_m['p']
+                upd = prev_m['full_update'][:prev_m['B']]
+                if wd > 0.0:
+                    pp.data.mul_(1.0 - lr * wd)
+                pp.add_(upd.to(dtype=pp.dtype), alpha=-lr * prev_m['scale'])
+
+            if hasattr(self, '_rs_futures'):
+                del self._rs_futures
+
+        return loss
+
+# --- Tokenizer evaluation helpers ---
+
+def build_sentencepiece_luts(
+    sp: spm.SentencePieceProcessor, vocab_size: int, device: torch.device
+) -> tuple[Tensor, Tensor, Tensor]:
+    sp_vocab_size = int(sp.vocab_size())
+    table_size = max(sp_vocab_size, vocab_size)
+    base_bytes_np = np.zeros((table_size,), dtype=np.int16)
+    has_leading_space_np = np.zeros((table_size,), dtype=np.bool_)
+    is_boundary_token_np = np.ones((table_size,), dtype=np.bool_)
+    for token_id in range(sp_vocab_size):
+        if sp.is_control(token_id) or sp.is_unknown(token_id) or sp.is_unused(token_id):
+            continue
+        is_boundary_token_np[token_id] = False
+        if sp.is_byte(token_id):
+            base_bytes_np[token_id] = 1
+            continue
+        piece = sp.id_to_piece(token_id)
+        if piece.startswith("\u2581"):
+            has_leading_space_np[token_id] = True
+            piece = piece[1:]
+        base_bytes_np[token_id] = len(piece.encode("utf-8"))
+    return (
+        torch.tensor(base_bytes_np, dtype=torch.int16, device=device),
+        torch.tensor(has_leading_space_np, dtype=torch.bool, device=device),
+        torch.tensor(is_boundary_token_np, dtype=torch.bool, device=device),
+    )
+def load_validation_tokens(pattern: str, seq_len: int) -> Tensor:
+    files = [Path(p) for p in sorted(glob.glob(pattern))]
+    if not files:
+        raise FileNotFoundError(f"No files found for pattern: {pattern}")
+    tokens = torch.cat([load_data_shard(file) for file in files]).contiguous()
+    usable = ((tokens.numel() - 1) // seq_len) * seq_len
+    if usable <= 0:
+        raise ValueError(f"Validation split is too short for TRAIN_SEQ_LEN={seq_len}")
+    return tokens[: usable + 1]
+def eval_val(
+    args: Hyperparameters,
+    model: nn.Module,
+    rank: int,
+    world_size: int,
+    device: torch.device,
+    grad_accum_steps: int,
+    val_tokens: Tensor,
+    base_bytes_lut: Tensor,
+    has_leading_space_lut: Tensor,
+    is_boundary_token_lut: Tensor,
+    eval_seq_len: int | None = None,
+) -> tuple[float, float]:
+    seq_len = eval_seq_len or args.train_seq_len
+    local_batch_tokens = args.val_batch_size // (world_size * grad_accum_steps)
+    if local_batch_tokens < seq_len:
+        raise ValueError(
+            "VAL_BATCH_SIZE must provide at least one sequence per rank; "
+            f"got VAL_BATCH_SIZE={args.val_batch_size}, WORLD_SIZE={world_size}, "
+            f"GRAD_ACCUM_STEPS={grad_accum_steps}, seq_len={seq_len}"
+        )
+    local_batch_seqs = local_batch_tokens // seq_len
+    total_seqs = (val_tokens.numel() - 1) // seq_len
+    seq_start = (total_seqs * rank) // world_size
+    seq_end = (total_seqs * (rank + 1)) // world_size
+    val_loss_sum = torch.zeros((), device=device, dtype=torch.float64)
+    val_token_count = torch.zeros((), device=device, dtype=torch.float64)
+    val_byte_count = torch.zeros((), device=device, dtype=torch.float64)
+    model.eval()
+    with torch.inference_mode():
+        for batch_seq_start in range(seq_start, seq_end, local_batch_seqs):
+            batch_seq_end = min(batch_seq_start + local_batch_seqs, seq_end)
+            raw_start = batch_seq_start * seq_len
+            raw_end = batch_seq_end * seq_len + 1
+            local = val_tokens[raw_start:raw_end].to(device=device, dtype=torch.int64, non_blocking=True)
+            x = local[:-1].reshape(-1, seq_len)
+            y = local[1:].reshape(-1, seq_len)
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
+                batch_loss = model(x, y).detach()
+            batch_token_count = float(y.numel())
+            val_loss_sum += batch_loss.to(torch.float64) * batch_token_count
+            val_token_count += batch_token_count
+            prev_ids = x.reshape(-1)
+            tgt_ids = y.reshape(-1)
+            token_bytes = base_bytes_lut[tgt_ids].to(dtype=torch.int16)
+            token_bytes += (has_leading_space_lut[tgt_ids] & ~is_boundary_token_lut[prev_ids]).to(dtype=torch.int16)
+            val_byte_count += token_bytes.to(torch.float64).sum()
+    if dist.is_available() and dist.is_initialized():
+        dist.all_reduce(val_loss_sum, op=dist.ReduceOp.SUM)
+        dist.all_reduce(val_token_count, op=dist.ReduceOp.SUM)
+        dist.all_reduce(val_byte_count, op=dist.ReduceOp.SUM)
+    val_loss = val_loss_sum / val_token_count
+    bits_per_token = val_loss.item() / math.log(2.0)
+    tokens_per_byte = val_token_count.item() / val_byte_count.item()
+    model.train()
+    return float(val_loss.item()), float(bits_per_token * tokens_per_byte)
+
+# --- Quantization helpers ---
+
+CONTROL_TENSOR_NAME_PATTERNS = tuple(
+    pattern
+    for pattern in os.environ.get(
+        "CONTROL_TENSOR_NAME_PATTERNS",
+        "attn_scale,attn_scales,mlp_scale,mlp_scales,resid_mix,resid_mixes,q_gain,skip_weight,skip_weights,smear,dtg_gate,ve_layer_scales,ve_shared.scale,attn_gate,vr_lambda",
+    ).split(",")
+    if pattern
+)
+
+# --- Data loading ---
+
+SHARD_HEADER_DTYPE = np.dtype("<i4")
+SHARD_TOKEN_DTYPE = np.dtype("<u2")
+SHARD_HEADER_WORDS = 256
+SHARD_MAGIC = 20240520
+SHARD_VERSION = 1
+SHARD_HEADER_BYTES = SHARD_HEADER_WORDS * SHARD_HEADER_DTYPE.itemsize
+
+def read_data_shard_header(file: Path) -> dict[str, int]:
+    header = np.fromfile(file, dtype=SHARD_HEADER_DTYPE, count=SHARD_HEADER_WORDS)
+    if header.size != SHARD_HEADER_WORDS or int(header[0]) != SHARD_MAGIC or int(header[1]) != SHARD_VERSION:
+        raise ValueError(f"Unexpected shard header for {file}")
+    return {"num_tokens": int(header[2])}
+
+def load_data_shard(file: Path) -> Tensor:
+    header = read_data_shard_header(file)
+    num_tokens = header["num_tokens"]
+    expected_size = SHARD_HEADER_BYTES + num_tokens * SHARD_TOKEN_DTYPE.itemsize
+    if file.stat().st_size != expected_size:
+        raise ValueError(f"Shard size mismatch for {file}: expected {expected_size} bytes")
+    tokens_np = np.fromfile(file, dtype=SHARD_TOKEN_DTYPE, count=num_tokens, offset=SHARD_HEADER_BYTES)
+    if tokens_np.size != num_tokens:
+        raise ValueError(f"Short read for {file}")
+    return torch.from_numpy(tokens_np.astype(np.uint16, copy=False))
+
+def choose_coprime_stride(modulus: int, salt: int) -> int:
+    if modulus <= 1:
+        return 1
+    candidate = abs(salt) % modulus
+    if candidate == 0:
+        candidate = 1
+    while math.gcd(candidate, modulus) != 1:
+        candidate += 1
+        if candidate >= modulus:
+            candidate = 1
+    return candidate
+
+class TokenStream:
+    def __init__(self, pattern: str):
+        self.files = [Path(p) for p in sorted(glob.glob(pattern))]
+        if not self.files:
+            raise FileNotFoundError(f"No files found for pattern: {pattern}")
+        self.file_idx = 0
+        self.tokens = load_data_shard(self.files[0])
+        self.pos = 0
+    def _advance_file(self) -> None:
+        self.file_idx = (self.file_idx + 1) % len(self.files)
+        self.tokens = load_data_shard(self.files[self.file_idx])
+        self.pos = 0
+    def take(self, n: int) -> Tensor:
+        chunks: list[Tensor] = []
+        remaining = n
+        while remaining > 0:
+            avail = self.tokens.numel() - self.pos
+            if avail <= 0:
+                self._advance_file()
+                continue
+            k = min(remaining, avail)
+            chunks.append(self.tokens[self.pos : self.pos + k])
+            self.pos += k
+            remaining -= k
+        return chunks[0] if len(chunks) == 1 else torch.cat(chunks)
+class DistributedTokenLoader:
+    def __init__(self, pattern: str, rank: int, world_size: int, device: torch.device):
+        self.rank = rank
+        self.world_size = world_size
+        self.device = device
+        self.stream = TokenStream(pattern)
+    def describe(self) -> str:
+        return f"loader:sequential shards:{len(self.stream.files)}"
+    def next_batch(self, global_tokens: int, seq_len: int, grad_accum_steps: int) -> tuple[Tensor, Tensor]:
+        local_tokens = global_tokens // (self.world_size * grad_accum_steps)
+        per_rank_span = local_tokens + 1
+        chunk = self.stream.take(per_rank_span * self.world_size)
+        start = self.rank * per_rank_span
+        local = chunk[start : start + per_rank_span].to(dtype=torch.int64)
+        x = local[:-1].reshape(-1, seq_len)
+        y = local[1:].reshape(-1, seq_len)
+        return x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True)
+
+class CoprimeDistributedTokenLoader:
+    """Shard-aware block sampler with deterministic coprime walks."""
+    def __init__(
+        self,
+        pattern: str,
+        rank: int,
+        world_size: int,
+        device: torch.device,
+        seq_len: int,
+        seed: int,
+        max_loaded_shards: int,
+        shards_per_batch: int,
+        shard_hold_steps: int,
+    ):
+        self.rank = rank
+        self.world_size = world_size
+        self.device = device
+        self.seq_len = seq_len
+        self.seed = seed
+        self.token_offsets = torch.arange(seq_len + 1, dtype=torch.int64)
+        self.cache: OrderedDict[Path, Tensor] = OrderedDict()
+        files = [Path(p) for p in sorted(glob.glob(pattern))]
+        if not files:
+            raise FileNotFoundError(f"No files found for pattern: {pattern}")
+        self.shards: list[dict[str, int | Path]] = []
+        for shard_idx, file in enumerate(files):
+            header = read_data_shard_header(file)
+            num_blocks = (header["num_tokens"] - 1) // seq_len
+            if num_blocks <= 0:
+                continue
+            self.shards.append(
+                {
+                    "file": file,
+                    "num_blocks": num_blocks,
+                    "offset": (seed * 131 + shard_idx * 17) % num_blocks,
+                    "stride": choose_coprime_stride(num_blocks, seed * 29 + shard_idx * 7 + 1),
+                }
+            )
+        if not self.shards:
+            raise ValueError(f"No usable shards found for seq_len={seq_len}")
+        self.num_shards = len(self.shards)
+        self.max_loaded_shards = max(1, min(max_loaded_shards, self.num_shards))
+        self.shards_per_batch = max(1, min(shards_per_batch, self.num_shards))
+        self.shard_hold_steps = max(1, shard_hold_steps)
+        self.batch_shard_stride = choose_coprime_stride(self.num_shards, seed * 41 + 3)
+        self.batch_idx = 0
+        self.shard_visits = [0 for _ in range(self.num_shards)]
+    def _get_tokens(self, file: Path) -> Tensor:
+        cached = self.cache.get(file)
+        if cached is not None:
+            self.cache.move_to_end(file)
+            return cached
+        # CPU advanced indexing is not implemented for uint16, so cache coprime-loader
+        # shards in int32 and cast to int64 only after batch assembly.
+        tokens = load_data_shard(file).to(dtype=torch.int32)
+        if len(self.cache) >= self.max_loaded_shards:
+            self.cache.popitem(last=False)
+        self.cache[file] = tokens
+        return tokens
+    def _sample_sequences(self, shard_idx: int, count: int) -> Tensor:
+        shard = self.shards[shard_idx]
+        num_blocks = int(shard["num_blocks"])
+        offset = int(shard["offset"])
+        stride = int(shard["stride"])
+        visits = self.shard_visits[shard_idx]
+        block_ids = (
+            offset
+            + (visits + torch.arange(count, dtype=torch.int64)) * stride
+        ) % num_blocks
+        self.shard_visits[shard_idx] += count
+        token_starts = block_ids * self.seq_len
+        gather_idx = token_starts.unsqueeze(1) + self.token_offsets.unsqueeze(0)
+        tokens = self._get_tokens(shard["file"])
+        return tokens[gather_idx]
+    def describe(self) -> str:
+        total_blocks = sum(int(shard["num_blocks"]) for shard in self.shards)
+        return (
+            f"loader:coprime shards:{self.num_shards} blocks:{total_blocks} "
+            f"seq_len:{self.seq_len} shards_per_batch:{self.shards_per_batch} "
+            f"cache:{self.max_loaded_shards} batch_stride:{self.batch_shard_stride} "
+            f"hold_steps:{self.shard_hold_steps}"
+        )
+    def next_batch(self, global_tokens: int, seq_len: int, grad_accum_steps: int) -> tuple[Tensor, Tensor]:
+        if seq_len != self.seq_len:
+            raise ValueError(f"Coprime loader was built for seq_len={self.seq_len}, got {seq_len}")
+        local_tokens = global_tokens // (self.world_size * grad_accum_steps)
+        if local_tokens % seq_len != 0:
+            raise ValueError(
+                f"TRAIN_BATCH_TOKENS={global_tokens} does not divide into full local sequences "
+                f"for WORLD_SIZE={self.world_size}, GRAD_ACCUM_STEPS={grad_accum_steps}, seq_len={seq_len}"
+            )
+        local_seqs = local_tokens // seq_len
+        active_shards = min(self.shards_per_batch, self.num_shards, local_seqs)
+        if active_shards <= 0:
+            raise ValueError(f"No active shards available for local_seqs={local_seqs}")
+        seqs_per_shard = local_seqs // active_shards
+        seq_remainder = local_seqs % active_shards
+        hold_idx = self.batch_idx // self.shard_hold_steps
+        shard_start = ((hold_idx * self.world_size) + self.rank) * self.batch_shard_stride
+        chunks: list[Tensor] = []
+        for shard_slot in range(active_shards):
+            count = seqs_per_shard + (1 if shard_slot < seq_remainder else 0)
+            if count <= 0:
+                continue
+            shard_idx = (shard_start + shard_slot * self.batch_shard_stride) % self.num_shards
+            chunks.append(self._sample_sequences(shard_idx, count))
+        self.batch_idx += 1
+        local = chunks[0] if len(chunks) == 1 else torch.cat(chunks, dim=0)
+        local = local.to(dtype=torch.int64)
+        x = local[:, :-1]
+        y = local[:, 1:]
+        return x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True)
+
+def build_train_loader(args: Hyperparameters, rank: int, world_size: int, device: torch.device):
+    if args.loader_mode == "sequential":
+        return DistributedTokenLoader(args.train_files, rank, world_size, device)
+    if args.loader_mode == "coprime":
+        return CoprimeDistributedTokenLoader(
+            args.train_files,
+            rank,
+            world_size,
+            device,
+            seq_len=args.train_seq_len,
+            seed=args.seed,
+            max_loaded_shards=args.coprime_max_loaded_shards,
+            shards_per_batch=args.coprime_shards_per_batch,
+            shard_hold_steps=args.coprime_shard_hold_steps,
+        )
+    raise ValueError(f"Unknown LOADER_MODE={args.loader_mode!r}")
+
+# --- Transformer modules ---
+
+class RMSNorm(nn.Module):
+    def __init__(self, eps: float | None = None):
+        super().__init__()
+        self.eps = eps
+    def forward(self, x: Tensor) -> Tensor:
+        return F.rms_norm(x, (x.size(-1),), eps=self.eps)
+class CastedLinear(nn.Linear):
+    _qat_enabled: bool = False
+    def forward(self, x: Tensor) -> Tensor:
+        w = self.weight.to(x.dtype)
+        if CastedLinear._qat_enabled and self.training and w.ndim == 2:
+            with torch.no_grad():
+                w32 = self.weight.float()
+                row_max = w32.abs().amax(dim=1)
+                scale = (row_max / 31.0).clamp_min(1.0 / 31.0)
+                w_q = (torch.clamp(torch.round(w32 / scale[:, None]), -32, 31) * scale[:, None]).to(x.dtype)
+            w = w + (w_q - w).detach()
+        bias = self.bias.to(x.dtype) if self.bias is not None else None
+        return F.linear(x, w, bias)
+def restore_low_dim_params_to_fp32(module: nn.Module) -> None:
+    with torch.no_grad():
+        for name, param in module.named_parameters():
+            if (param.ndim < 2 or any(pattern in name for pattern in CONTROL_TENSOR_NAME_PATTERNS)) and param.dtype != torch.float32:
+                param.data = param.data.float()
+class Rotary(nn.Module):
+    def __init__(self, dim: int, base: float = 10000.0, train_seq_len: int = 1024, rope_dims: int = 0):
+        super().__init__()
+        self.dim = dim
+        self.base = base
+        self.train_seq_len = train_seq_len
+        self.rope_dims = rope_dims if rope_dims > 0 else dim
+        inv_freq = 1.0 / (base ** (torch.arange(0, self.rope_dims, 2, dtype=torch.float32) / self.rope_dims))
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+        self._seq_len_cached = 0
+        self._cos_cached: Tensor | None = None
+        self._sin_cached: Tensor | None = None
+    def forward(self, seq_len: int, device: torch.device, dtype: torch.dtype) -> tuple[Tensor, Tensor]:
+        if (
+            self._cos_cached is None
+            or self._sin_cached is None
+            or self._seq_len_cached != seq_len
+            or self._cos_cached.device != device
+        ):
+            rd = self.rope_dims
+            if seq_len > self.train_seq_len:
+                scale = seq_len / self.train_seq_len
+                new_base = self.base * (scale ** (rd / (rd - 2)))
+                inv_freq = 1.0 / (new_base ** (torch.arange(0, rd, 2, dtype=torch.float32, device=device) / rd))
+            else:
+                inv_freq = self.inv_freq.to(device)
+            t = torch.arange(seq_len, device=device, dtype=inv_freq.dtype)
+            freqs = torch.outer(t, inv_freq)
+            self._cos_cached = freqs.cos()[None, :, None, :]
+            self._sin_cached = freqs.sin()[None, :, None, :]
+            self._seq_len_cached = seq_len
+        return self._cos_cached.to(dtype=dtype), self._sin_cached.to(dtype=dtype)
+def apply_rotary_emb(x: Tensor, cos: Tensor, sin: Tensor, rope_dims: int = 0) -> Tensor:
+    if rope_dims > 0 and rope_dims < x.size(-1):
+        x_rope, x_pass = x[..., :rope_dims], x[..., rope_dims:]
+        half = rope_dims // 2
+        x1, x2 = x_rope[..., :half], x_rope[..., half:]
+        x_rope = torch.cat((x1 * cos + x2 * sin, x1 * (-sin) + x2 * cos), dim=-1)
+        return torch.cat((x_rope, x_pass), dim=-1)
+    half = x.size(-1) // 2
+    x1, x2 = x[..., :half], x[..., half:]
+    return torch.cat((x1 * cos + x2 * sin, x1 * (-sin) + x2 * cos), dim=-1)
+
+class CausalSelfAttention(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        num_heads: int,
+        num_kv_heads: int,
+        rope_base: float,
+        qk_gain_init: float,
+        gated_attention: bool = False,
+        value_residual: bool = False,
+    ):
+        super().__init__()
+        if dim % num_heads != 0:
+            raise ValueError("model_dim must be divisible by num_heads")
+        if num_heads % num_kv_heads != 0:
+            raise ValueError("num_heads must be divisible by num_kv_heads")
+        self.num_heads = num_heads
+        self.num_kv_heads = num_kv_heads
+        self.head_dim = dim // num_heads
+        if self.head_dim % 2 != 0:
+            raise ValueError("head_dim must be even for RoPE")
+        # No CastedLinear -- weights come from banks
+        self.q_gain = nn.Parameter(torch.full((num_heads,), qk_gain_init, dtype=torch.float32))
+        self.rope_dims = 0  # set by GPT.__init__ for partial RoPE
+        self.rotary = Rotary(self.head_dim, base=rope_base, train_seq_len=1024)
+        self.use_xsa = False  # set by GPT.__init__ for deep layers only
+        # Gated attention and value residual (non-banked small params)
+        self.gated_attention = gated_attention
+        if gated_attention:
+            self.attn_gate = nn.Linear(dim, num_heads, bias=True)
+            nn.init.zeros_(self.attn_gate.weight)
+            nn.init.constant_(self.attn_gate.bias, 4.0)
+        self.value_residual = value_residual
+        if value_residual:
+            self.vrl_alpha = nn.Parameter(torch.zeros(1, dtype=torch.float32))  # sigmoid gate (PR #569 style)
+        self._calib_save_y = None  # set during GPTQ calibration to capture pre-O-proj attn output
+    def _xsa_efficient(self, y: Tensor, v: Tensor) -> Tensor:
+        """Efficient XSA: subtract self-value projection via GQA-aware reshape (no repeat_interleave).
+        y: [B, T, H, D], v: [B, T, Hkv, D]. H must be divisible by Hkv."""
+        B, T, H, D = y.shape
+        Hkv = v.size(-2)
+        group = H // Hkv
+        y_g = y.reshape(B, T, Hkv, group, D)        # [B, T, Hkv, group, D]
+        vn = F.normalize(v, dim=-1).unsqueeze(-2)    # [B, T, Hkv, 1, D] -- broadcast ready
+        proj = (y_g * vn).sum(dim=-1, keepdim=True) * vn
+        return (y_g - proj).reshape(B, T, H, D)
+    def forward(self, x: Tensor, q_w: Tensor, k_w: Tensor, v_w: Tensor, out_w: Tensor, v_embed: Tensor | None = None, v0: Tensor | None = None) -> tuple[Tensor, Tensor | None]:
+        bsz, seqlen, dim = x.shape
+        q = F.linear(x, q_w.to(x.dtype)).reshape(bsz, seqlen, self.num_heads, self.head_dim)
+        k = F.linear(x, k_w.to(x.dtype)).reshape(bsz, seqlen, self.num_kv_heads, self.head_dim)
+        v = F.linear(x, v_w.to(x.dtype))
+        if v_embed is not None:
+            v = v + v_embed
+        v = v.reshape(bsz, seqlen, self.num_kv_heads, self.head_dim)
+        raw_v = v if self.value_residual else None
+        if self.value_residual and v0 is not None:
+            alpha = torch.sigmoid(self.vrl_alpha.to(dtype=v.dtype))
+            v = v + alpha * v0  # sigmoid-gated residual (PR #569 style)
+        q = F.rms_norm(q, (q.size(-1),))
+        k = F.rms_norm(k, (k.size(-1),))
+        cos, sin = self.rotary(seqlen, x.device, q.dtype)
+        q = apply_rotary_emb(q, cos, sin, self.rope_dims)
+        k = apply_rotary_emb(k, cos, sin, self.rope_dims)
+        q = q * self.q_gain.to(dtype=q.dtype)[None, None, :, None]
+        if flash_attn_3_func is not None:
+            q_attn, k_attn, v_attn = q, k, v
+            if q_attn.dtype not in (torch.float16, torch.bfloat16):
+                q_attn = q_attn.to(torch.bfloat16)
+                k_attn = k_attn.to(torch.bfloat16)
+                v_attn = v_attn.to(torch.bfloat16)
+            y = flash_attn_3_func(q_attn, k_attn, v_attn, causal=True)
+        else:
+            qh = q.transpose(1, 2)
+            kh = k.transpose(1, 2)
+            vh = v.transpose(1, 2)
+            if self.num_heads != self.num_kv_heads:
+                repeat = self.num_heads // self.num_kv_heads
+                kh = kh.repeat_interleave(repeat, dim=1)
+                vh = vh.repeat_interleave(repeat, dim=1)
+            y = F.scaled_dot_product_attention(qh, kh, vh, is_causal=True).transpose(1, 2)
+        if self.use_xsa:
+            y = self._xsa_efficient(y, v)
+        if self.gated_attention:
+            # gate shape: (bsz, seqlen, num_heads) -> (bsz, seqlen, num_heads, 1) for B,T,H,D layout
+            gate = torch.sigmoid(self.attn_gate(x)).unsqueeze(-1)
+            y = y * gate
+        y = y.reshape(bsz, seqlen, dim)
+        if self._calib_save_y is not None:
+            self._calib_save_y(y.detach())
+        return F.linear(y, out_w.to(x.dtype)), raw_v
+
+class SmearGate(nn.Module):
+    def __init__(self, dim: int):
+        super().__init__()
+        self.gate = nn.Parameter(torch.zeros(dim, dtype=torch.float32))
+    def forward(self, x: Tensor) -> Tensor:
+        g = torch.sigmoid(self.gate.to(dtype=x.dtype))[None, None, :]
+        x_prev = torch.cat([torch.zeros_like(x[:, :1]), x[:, :-1]], dim=1)
+        return (1 - g) * x + g * x_prev
+
+class BigramHashEmbedding(nn.Module):
+    def __init__(self, bigram_vocab_size: int, bigram_dim: int, model_dim: int, trigram: bool = False):
+        super().__init__()
+        self.bigram_vocab_size = bigram_vocab_size
+        self._trigram = trigram
+        self.embed = nn.Embedding(bigram_vocab_size, bigram_dim)
+        nn.init.zeros_(self.embed.weight)
+        self.proj = CastedLinear(bigram_dim, model_dim, bias=False) if bigram_dim != model_dim else None
+        if self.proj is not None:
+            nn.init.zeros_(self.proj.weight)
+        self.scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))
+    def bigram_hash(self, tokens: Tensor) -> Tensor:
+        t = tokens.to(torch.int32)
+        mod = self.bigram_vocab_size - 1
+        out = torch.empty_like(t)
+        out[..., 0] = mod
+        out[..., 1:] = torch.bitwise_xor(36313 * t[..., 1:], 27191 * t[..., :-1]) % mod
+        return out.long()
+    def trigram_hash(self, tokens: Tensor) -> Tensor:
+        """Hash (t-2, t-1, t) trigrams into same embedding table. Zero extra params."""
+        t = tokens.to(torch.int32)
+        mod = self.bigram_vocab_size - 1
+        out = torch.empty_like(t)
+        out[..., :2] = mod
+        out[..., 2:] = (36313 * t[..., 2:] ^ 27191 * t[..., 1:-1] ^ 51497 * t[..., :-2]) % mod
+        return out.long()
+    def forward(self, token_ids: Tensor) -> Tensor:
+        h = self.embed(self.bigram_hash(token_ids))
+        if self._trigram:
+            h = h + self.embed(self.trigram_hash(token_ids))
+        if self.proj is not None:
+            h = self.proj(h)
+        return h * self.scale.to(dtype=h.dtype)
+
+class ValueEmbedding(nn.Module):
+    """Reinject token identity into attention values at specific layers.
+    Each table maps vocab tokens to a low-dim embedding, projected to model_dim."""
+    def __init__(self, vocab_size: int, ve_dim: int, model_dim: int):
+        super().__init__()
+        self.embed = nn.Embedding(vocab_size, ve_dim)
+        nn.init.normal_(self.embed.weight, std=0.01)
+        self.proj = CastedLinear(ve_dim, model_dim, bias=False) if ve_dim != model_dim else None
+        if self.proj is not None:
+            nn.init.zeros_(self.proj.weight)
+        self.scale = nn.Parameter(torch.tensor(0.1, dtype=torch.float32))
+    def forward(self, token_ids: Tensor) -> Tensor:
+        h = self.embed(token_ids)
+        if self.proj is not None:
+            h = self.proj(h)
+        return h * self.scale.to(dtype=h.dtype)
+
+class MLP(nn.Module):
+    def __init__(self, dim: int, mlp_mult: int):
+        super().__init__()
+        # No CastedLinear -- weights come from banks
+        self.kernel_mode = os.environ.get("MLP_KERNEL_MODE", "").strip().lower()
+        self._calib_save_act = None  # set during GPTQ calibration to capture pre-down-proj activation
+    def forward(self, x: Tensor, up_w: Tensor, down_w: Tensor) -> Tensor:
+        h = F.linear(x, up_w.to(x.dtype))
+        h = leaky_relu_sq(h, kernel_mode=self.kernel_mode)
+        if self._calib_save_act is not None:
+            self._calib_save_act(h.detach())
+        return F.linear(h, down_w.to(x.dtype))
+
+class Block(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        num_heads: int,
+        num_kv_heads: int,
+        mlp_mult: int,
+        rope_base: float,
+        qk_gain_init: float,
+        layer_idx: int = 0,
+        ln_scale: bool = False,
+        dtg: bool = False,
+        gated_attention: bool = False,
+        value_residual: bool = False,
+    ):
+        super().__init__()
+        self.attn_norm = RMSNorm()
+        self.mlp_norm = RMSNorm()
+        self.attn = CausalSelfAttention(dim, num_heads, num_kv_heads, rope_base, qk_gain_init,
+                                        gated_attention=gated_attention, value_residual=value_residual)
+        self.mlp = MLP(dim, mlp_mult)
+        attn_scale_init = float(os.environ.get("ATTN_SCALE_INIT", "1.0"))
+        mlp_scale_init = float(os.environ.get("MLP_SCALE_INIT", "1.0"))
+        resid_mix_x_init = float(os.environ.get("RESID_MIX_X_INIT", "1.0"))
+        resid_mix_x0_init = float(os.environ.get("RESID_MIX_X0_INIT", "0.0"))
+        self.attn_scale = nn.Parameter(torch.full((dim,), attn_scale_init, dtype=torch.float32))
+        self.mlp_scale = nn.Parameter(torch.full((dim,), mlp_scale_init, dtype=torch.float32))
+        self.resid_mix = nn.Parameter(
+            torch.stack(
+                (
+                    torch.full((dim,), resid_mix_x_init, dtype=torch.float32),
+                    torch.full((dim,), resid_mix_x0_init, dtype=torch.float32),
+                )
+            )
+        )
+        self.ln_scale_factor = 1.0 / math.sqrt(layer_idx + 1) if ln_scale else 1.0
+        if dtg:
+            self.dtg_gate = nn.Linear(dim, 1, bias=True)
+            nn.init.zeros_(self.dtg_gate.weight)
+            nn.init.constant_(self.dtg_gate.bias, 2.0)
+        else:
+            self.dtg_gate = None
+    def forward(self, x: Tensor, x0: Tensor, q_w: Tensor, k_w: Tensor, v_w: Tensor, out_w: Tensor, up_w: Tensor, down_w: Tensor, v_embed: Tensor | None = None, v0: Tensor | None = None) -> tuple[Tensor, Tensor | None]:
+        mix = self.resid_mix.to(dtype=x.dtype)
+        x_in = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
+        attn_out, raw_v = self.attn(self.attn_norm(x_in) * self.ln_scale_factor, q_w, k_w, v_w, out_w, v_embed=v_embed, v0=v0)
+        x_out = x_in + self.attn_scale.to(dtype=x_in.dtype)[None, None, :] * attn_out
+        x_out = x_out + self.mlp_scale.to(dtype=x_out.dtype)[None, None, :] * self.mlp(self.mlp_norm(x_out) * self.ln_scale_factor, up_w, down_w)
+        if self.dtg_gate is not None:
+            gate = torch.sigmoid(self.dtg_gate(x_in.detach()))
+            x_out = x_in + gate * (x_out - x_in)
+        return x_out, raw_v
+
+class GPT(nn.Module):
+    def __init__(
+        self,
+        vocab_size: int,
+        num_layers: int,
+        model_dim: int,
+        num_heads: int,
+        num_kv_heads: int,
+        mlp_mult: int,
+        tie_embeddings: bool,
+        tied_embed_init_std: float,
+        logit_softcap: float,
+        rope_base: float,
+        qk_gain_init: float,
+        mtp_num_heads: int = 0,
+        mtp_loss_weight: float = 0.1,
+        bigram_vocab_size: int = 0,
+        bigram_dim: int = 128,
+        xsa_last_n: int = 0,
+        rope_dims: int = 0,
+        ln_scale: bool = False,
+        dtg: bool = False,
+        ve_enabled: bool = False,
+        ve_dim: int = 128,
+        ve_layers: str = "9,10",
+        gated_attention: bool = False,
+        value_residual: bool = False,
+    ):
+        super().__init__()
+        self._ve_target_dim = num_kv_heads * (model_dim // num_heads)  # kv_dim for value projection
+        if logit_softcap <= 0.0:
+            raise ValueError(f"logit_softcap must be positive, got {logit_softcap}")
+        self.tie_embeddings = tie_embeddings
+        self.tied_embed_init_std = tied_embed_init_std
+        self.logit_softcap = logit_softcap
+        self.value_residual = value_residual
+        self.mtp_num_heads = mtp_num_heads
+        self.mtp_loss_weight = mtp_loss_weight
+        self.tok_emb = nn.Embedding(vocab_size, model_dim)
+        self.bigram = BigramHashEmbedding(bigram_vocab_size, bigram_dim, model_dim, trigram=bool(int(os.environ.get("TRIGRAM", "0")))) if bigram_vocab_size > 0 else None
+        self.smear = SmearGate(model_dim)
+        self.num_encoder_layers = num_layers // 2
+        self.num_decoder_layers = num_layers - self.num_encoder_layers
+        self.num_skip_weights = min(self.num_encoder_layers, self.num_decoder_layers)
+        self.skip_weights = nn.Parameter(torch.ones(self.num_skip_weights, model_dim, dtype=torch.float32))
+        # Parameter banks: contiguous 3D tensors for batched optimizer
+        head_dim = model_dim // num_heads
+        kv_dim = num_kv_heads * head_dim
+        mlp_dim = int(mlp_mult * model_dim)
+        self.num_layers = num_layers
+        self.qo_bank = nn.Parameter(torch.empty(2 * num_layers, model_dim, model_dim))
+        self.kv_bank = nn.Parameter(torch.empty(2 * num_layers, kv_dim, model_dim))
+        self.mlp_up_bank = nn.Parameter(torch.empty(num_layers, mlp_dim, model_dim))
+        self.mlp_down_bank = nn.Parameter(torch.empty(num_layers, model_dim, mlp_dim))
+        self.blocks = nn.ModuleList(
+            [
+                Block(
+                    model_dim,
+                    num_heads,
+                    num_kv_heads,
+                    mlp_mult,
+                    rope_base,
+                    qk_gain_init,
+                    layer_idx=i,
+                    ln_scale=ln_scale,
+                    dtg=dtg,
+                    gated_attention=gated_attention,
+                    value_residual=value_residual,
+                )
+                for i in range(num_layers)
+            ]
+        )
+        if rope_dims > 0:
+            head_dim = model_dim // num_heads
+            for block in self.blocks:
+                block.attn.rope_dims = rope_dims
+                block.attn.rotary = Rotary(head_dim, base=rope_base, train_seq_len=1024, rope_dims=rope_dims)
+        self.ve_layer_indices = [int(x) for x in ve_layers.split(",") if x.strip()] if ve_enabled else []
+        kv_dim_ve = self._ve_target_dim
+        if self.ve_layer_indices:
+            self.ve_shared = ValueEmbedding(vocab_size, ve_dim, kv_dim_ve)
+            self.ve_layer_scales = nn.ParameterList(
+                [nn.Parameter(torch.ones(1, dtype=torch.float32)) for _ in self.ve_layer_indices]
+            )
+        else:
+            self.ve_shared = None
+            self.ve_layer_scales = nn.ParameterList()
+        self.value_embeds = nn.ModuleList()  # keep empty for compat
+        self.final_norm = RMSNorm()
+        self.lm_head = None if tie_embeddings else CastedLinear(model_dim, vocab_size, bias=False)
+        if self.lm_head is not None:
+            self.lm_head._zero_init = True
+        self.mtp_heads = nn.ModuleList(
+            [CastedLinear(model_dim, vocab_size, bias=False) for _ in range(mtp_num_heads)]
+        )
+        for head in self.mtp_heads:
+            head._zero_init = True
+        if xsa_last_n > 0:
+            for i in range(max(0, num_layers - xsa_last_n), num_layers):
+                self.blocks[i].attn.use_xsa = True
+        self._init_weights()
+    def _init_weights(self) -> None:
+        if self.tie_embeddings:
+            nn.init.normal_(self.tok_emb.weight, mean=0.0, std=self.tied_embed_init_std)
+        n = self.num_layers
+        proj_scale = 1.0 / math.sqrt(2 * n)
+        # Init banks: orthogonal, with proj layers scaled down and out/down zero-init
+        for i in range(n):
+            nn.init.orthogonal_(self.qo_bank.data[i], gain=1.0)        # Q
+            nn.init.zeros_(self.qo_bank.data[n + i])                    # Out (zero init)
+            nn.init.orthogonal_(self.kv_bank.data[i], gain=1.0)        # K
+            nn.init.orthogonal_(self.kv_bank.data[n + i], gain=1.0)    # V
+            nn.init.orthogonal_(self.mlp_up_bank.data[i], gain=1.0)    # MLP up
+            nn.init.zeros_(self.mlp_down_bank.data[i])                  # MLP down (zero init)
+            # Scale proj layers (out_proj and mlp_down are "proj" layers)
+            self.qo_bank.data[n + i].mul_(proj_scale)
+            self.mlp_down_bank.data[i].mul_(proj_scale)
+        # Init remaining nn.Linear modules (bigram proj, mtp heads, lm_head)
+        for name, module in self.named_modules():
+            if isinstance(module, nn.Linear):
+                if getattr(module, "_zero_init", False):
+                    nn.init.zeros_(module.weight)
+                elif module.weight.ndim == 2 and module.weight.shape[0] >= 64 and module.weight.shape[1] >= 64:
+                    nn.init.orthogonal_(module.weight, gain=1.0)
+    def _get_ve(self, layer_idx: int, input_ids: Tensor, ve_cache: dict | None = None) -> Tensor | None:
+        """Get value embedding for a specific layer using shared table + per-layer scale."""
+        if self.ve_shared is None or layer_idx not in self.ve_layer_indices:
+            return None
+        if ve_cache is not None and 've' not in ve_cache:
+            ve_cache['ve'] = self.ve_shared(input_ids)
+        ve_base = ve_cache['ve'] if ve_cache is not None else self.ve_shared(input_ids)
+        ve_idx = self.ve_layer_indices.index(layer_idx)
+        return ve_base * self.ve_layer_scales[ve_idx].to(dtype=ve_base.dtype)
+    def forward(self, input_ids: Tensor, target_ids: Tensor) -> Tensor:
+        n = self.num_layers
+        x = self.tok_emb(input_ids)
+        if self.bigram is not None:
+            x = x + self.bigram(input_ids)
+        x = F.rms_norm(x, (x.size(-1),))
+        x = self.smear(x)
+        x0 = x
+        v0 = None
+        skips: list[Tensor] = []
+        ve_cache: dict = {}
+        for i in range(self.num_encoder_layers):
+            ve = self._get_ve(i, input_ids, ve_cache)
+            x, raw_v = self.blocks[i](x, x0,
+                self.qo_bank[i], self.kv_bank[i], self.kv_bank[n + i],
+                self.qo_bank[n + i], self.mlp_up_bank[i], self.mlp_down_bank[i],
+                v_embed=ve, v0=v0)
+            if v0 is None and raw_v is not None:
+                v0 = raw_v
+            skips.append(x)
+        for i in range(self.num_decoder_layers):
+            bi = self.num_encoder_layers + i
+            if skips:
+                x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
+            ve = self._get_ve(bi, input_ids, ve_cache)
+            x, _ = self.blocks[bi](x, x0,
+                self.qo_bank[bi], self.kv_bank[bi], self.kv_bank[n + bi],
+                self.qo_bank[n + bi], self.mlp_up_bank[bi], self.mlp_down_bank[bi],
+                v_embed=ve, v0=v0)
+        x = self.final_norm(x)
+        x_flat = x.reshape(-1, x.size(-1))
+        targets = target_ids.reshape(-1)
+        if self.tie_embeddings:
+            logits_proj = F.linear(x_flat, self.tok_emb.weight)
+        else:
+            if self.lm_head is None:
+                raise RuntimeError("lm_head is required when tie_embeddings=False")
+            logits_proj = self.lm_head(x_flat)
+        logits = self.logit_softcap * torch.tanh(logits_proj / self.logit_softcap)
+        if hasattr(self, '_ngram_tracker') and self._ngram_tracker is not None and self.training:
+            per_tok_loss = F.cross_entropy(logits.float(), targets, reduction="none")
+            weights = self._ngram_tracker.get_weights(input_ids, target_ids)
+            main_loss = (per_tok_loss * weights).mean()
+        else:
+            main_loss = F.cross_entropy(logits.float(), targets, reduction="mean")
+        if self.training and self.mtp_num_heads > 0 and self.mtp_loss_weight > 0.0:
+            _, seqlen, dim = x.shape
+            mtp_loss_sum = x.new_zeros(())
+            mtp_loss_count = 0
+            for k, mtp_head in enumerate(self.mtp_heads):
+                valid_t = seqlen - (k + 1)
+                if valid_t <= 0:
+                    continue
+                mtp_hidden = x[:, :valid_t, :].reshape(-1, dim)
+                mtp_targets = target_ids[:, k + 1 :].reshape(-1)
+                mtp_logits_proj = mtp_head(mtp_hidden)
+                mtp_logits = self.logit_softcap * torch.tanh(mtp_logits_proj / self.logit_softcap)
+                mtp_loss_sum = mtp_loss_sum + F.cross_entropy(mtp_logits.float(), mtp_targets, reduction="mean")
+                mtp_loss_count += 1
+            if mtp_loss_count > 0:
+                main_loss = main_loss + self.mtp_loss_weight * (mtp_loss_sum / mtp_loss_count)
+        return main_loss
+    def forward_logits(self, input_ids: Tensor) -> Tensor:
+        """Return logits (bsz, seq_len, vocab) without computing loss."""
+        n = self.num_layers
+        x = self.tok_emb(input_ids)
+        if self.bigram is not None:
+            x = x + self.bigram(input_ids)
+        x = F.rms_norm(x, (x.size(-1),))
+        x = self.smear(x)
+        x0 = x
+        v0 = None
+        skips: list[Tensor] = []
+        ve_cache: dict = {}
+        for i in range(self.num_encoder_layers):
+            ve = self._get_ve(i, input_ids, ve_cache)
+            x, raw_v = self.blocks[i](x, x0,
+                self.qo_bank[i], self.kv_bank[i], self.kv_bank[n + i],
+                self.qo_bank[n + i], self.mlp_up_bank[i], self.mlp_down_bank[i],
+                v_embed=ve, v0=v0)
+            if v0 is None and raw_v is not None:
+                v0 = raw_v
+            skips.append(x)
+        for i in range(self.num_decoder_layers):
+            bi = self.num_encoder_layers + i
+            if skips:
+                x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
+            ve = self._get_ve(bi, input_ids, ve_cache)
+            x, _ = self.blocks[bi](x, x0,
+                self.qo_bank[bi], self.kv_bank[bi], self.kv_bank[n + bi],
+                self.qo_bank[n + bi], self.mlp_up_bank[bi], self.mlp_down_bank[bi],
+                v_embed=ve, v0=v0)
+        x = self.final_norm(x)
+        if self.tie_embeddings:
+            logits_proj = F.linear(x, self.tok_emb.weight)
+        else:
+            logits_proj = self.lm_head(x)
+        return self.logit_softcap * torch.tanh(logits_proj / self.logit_softcap)
+
+# --- N-gram bulk update and hashed n-gram sliding eval ---
+
+def _ngram_bulk_update(val_np, start, end, ctx_tables, full_tables,
+                       min_order, max_order, primes, mask):
+    """Bulk update n-gram tables with a contiguous range of tokens.
+    All ranks call this with the SAME token range -> identical tables everywhere."""
+    t = val_np[start:end].astype(np.uint64)
+    n = len(t)
+    for order in range(min_order, max_order + 1):
+        if n < order:
+            continue
+        ctx_width = order - 1
+        ctx_hash = np.zeros(n - order + 1, dtype=np.uint64)
+        for k in range(ctx_width):
+            ctx_hash ^= t[k:n - order + 1 + k] * primes[k % len(primes)]
+        ctx_key = (ctx_hash & mask).astype(np.int64)
+        tgt = t[order - 1:]
+        full_key = ((ctx_hash ^ (tgt * primes[ctx_width % len(primes)])) & mask).astype(np.int64)
+        ctx_tables[order] += np.bincount(ctx_key, minlength=len(ctx_tables[order])).astype(np.uint32)
+        full_tables[order] += np.bincount(full_key, minlength=len(full_tables[order])).astype(np.uint32)
+
+def eval_val_sliding_hashed_ngram(
+    args: Hyperparameters,
+    base_model: nn.Module,
+    rank: int,
+    world_size: int,
+    device: torch.device,
+    val_tokens: Tensor,
+    base_bytes_lut: Tensor,
+    has_leading_space_lut: Tensor,
+    is_boundary_token_lut: Tensor,
+    stride: int,
+    order: int,
+    alpha: float,
+    min_count: int,
+    buckets: int,
+    max_seconds: float = 0.0,
+    batch_seqs: int = 128,
+    eval_seq_len: int | None = None,
+) -> tuple[float, float, float]:
+    """Score-first sliding eval with chunk-based SHARED n-gram tables + cubric.
+
+    Key design: all ranks share identical n-gram tables via bulk chunk updates.
+    Each chunk's windows are distributed across ranks for scoring, then ALL ranks
+    update tables with the same contiguous token range. Every rank sees the full
+    n-gram picture (not 1/world_size like per-segment updates).
+
+    Legal: entire chunk scored before its tokens update the tables.
+    """
+    min_order = max(args.ngram_eval_min_order, 2)
+    max_order = max(order, min_order)
+    adaptive = args.ngram_eval_adaptive
+    alpha_min = args.ngram_eval_alpha_min
+    alpha_max = args.ngram_eval_alpha_max
+    ent_center = args.ngram_eval_entropy_center
+    ent_scale = args.ngram_eval_entropy_scale
+
+    # Parse fixed per-order multipliers (PR #809 style)
+    _fixed_order_mults = None
+    if args.ngram_order_mults_str:
+        _fixed_order_mults = np.array([float(x) for x in args.ngram_order_mults_str.split(",")], dtype=np.float64)
+
+    seq_len = eval_seq_len or args.train_seq_len
+    total_tokens = val_tokens.numel() - 1
+
+    # Build all windows and total scored tokens
+    all_window_starts = [ws for ws in range(0, total_tokens, stride) if min(ws + seq_len, total_tokens) - ws >= 1]
+    total_scored_tokens = 0.0
+    for ws in all_window_starts:
+        end = min(ws + seq_len, total_tokens)
+        wlen = end - ws
+        s = 0 if ws == 0 else max(wlen - stride, 0)
+        total_scored_tokens += float(max(wlen - s, 0))
+
+    # Group windows into chunks by scored position -- all ranks share this grouping
+    chunk_tokens = int(os.environ.get("NGRAM_CHUNK_TOKENS", "1048576"))  # 1M default
+    num_chunks = (total_tokens + chunk_tokens - 1) // chunk_tokens
+    chunk_windows: list[list[int]] = [[] for _ in range(num_chunks)]
+    for ws in all_window_starts:
+        end = min(ws + seq_len, total_tokens)
+        wlen = end - ws
+        s = 0 if ws == 0 else max(wlen - stride, 0)
+        scored_start = ws + s
+        ci = min(scored_start // chunk_tokens, num_chunks - 1)
+        chunk_windows[ci].append(ws)
+
+    val_np = val_tokens.numpy()
+    ctx_tables = {n: np.zeros((buckets,), dtype=np.uint32) for n in range(min_order, max_order + 1)}
+    full_tables = {n: np.zeros((buckets,), dtype=np.uint32) for n in range(min_order, max_order + 1)}
+    mask = np.uint64(buckets - 1)
+    primes = np.array(
+        [np.uint64(36313), np.uint64(27191), np.uint64(51647), np.uint64(81929),
+         np.uint64(131071), np.uint64(174763), np.uint64(233017)],
+        dtype=np.uint64,
+    )
+
+    loss_sum = 0.0
+    token_count = 0.0
+    byte_count = 0.0
+
+    # Cubric 3D: per (order x entropy_bin x count_bin) adaptive alpha scaling
+    _NUM_ENT_BINS = 3  # low / mid / high entropy
+    _NUM_CNT_BINS = 3  # low / mid / high count
+    _ENT_EDGES = np.array([ent_center - 1.0, ent_center + 1.0])  # [2.0, 4.0] for center=3.0
+    _CNT_EDGES = np.array([5.0, 50.0])  # low=<5, mid=5-50, high=>50 context count
+    _TOTAL_CELLS = _NUM_ENT_BINS * _NUM_CNT_BINS  # 9 cells per order = 54 total
+    _cc = getattr(args, 'cubric_cadence', 0); _con = _cc > 0; _cfired = 0
+    if _con:
+        # Warm-start: proven converged values from 4+ runs (orders 2-7)
+        # All 9 cells per order get the same warm-start, 3D cubric refines from there
+        _WARM = {2: 0.45, 3: 0.30, 4: 0.45, 5: 1.88, 6: 2.00, 7: 2.00, 8: 2.00, 9: 2.00}
+        _c_alpha_mult = {n: [_WARM.get(n, 1.0)] * _TOTAL_CELLS for n in range(min_order, max_order + 1)}
+        _c_hits = {n: [0] * _TOTAL_CELLS for n in range(min_order, max_order + 1)}
+        _c_beats = {n: [0] * _TOTAL_CELLS for n in range(min_order, max_order + 1)}
+
+    base_model.eval()
+    compiled_logits = maybe_compile(
+        base_model.forward_logits,
+        enabled=args.compile_enabled,
+        fullgraph=False,
+    )
+    t0 = time.perf_counter()
+    deadline = (t0 + max_seconds) if max_seconds > 0.0 else None
+    cutoff_hit = False
+
+    if rank == 0:
+        print(f"ngram_eval:chunks={num_chunks} chunk_tokens={chunk_tokens} "
+              f"windows={len(all_window_starts)} shared_tables=True", flush=True)
+
+    with torch.inference_mode():
+        for ci in range(num_chunks):
+            if deadline is not None and time.perf_counter() >= deadline:
+                cutoff_hit = True
+                break
+
+            windows = chunk_windows[ci]
+            if not windows:
+                continue
+
+            # Distribute this chunk's windows across ranks
+            my_s = (len(windows) * rank) // world_size
+            my_e = (len(windows) * (rank + 1)) // world_size
+            my_windows = windows[my_s:my_e]
+
+            # --- Phase 1: SCORE this chunk's windows ---
+            for bi in range(0, len(my_windows), batch_seqs):
+                batch_ws = my_windows[bi:bi + batch_seqs]
+                bsz = len(batch_ws)
+                x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+                y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+                wlens: list[int] = []
+                for i, ws in enumerate(batch_ws):
+                    end = min(ws + seq_len, total_tokens)
+                    wlen = end - ws
+                    wlens.append(wlen)
+                    chunk = val_tokens[ws:end + 1].to(dtype=torch.int64, device=device)
+                    x_batch[i, :wlen] = chunk[:-1]
+                    y_batch[i, :wlen] = chunk[1:]
+
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                    logits = compiled_logits(x_batch)
+                logits_f = logits.float()
+                nll = F.cross_entropy(
+                    logits_f.reshape(-1, logits_f.size(-1)),
+                    y_batch.reshape(-1),
+                    reduction="none",
+                ).reshape(bsz, seq_len)
+
+                for i, ws in enumerate(batch_ws):
+                    wlen = wlens[i]
+                    s = 0 if ws == 0 else max(wlen - stride, 0)
+                    seg_len = wlen - s
+                    if seg_len <= 0:
+                        continue
+
+                    seg_nll = nll[i, s:wlen].to(torch.float64).cpu().numpy()
+                    seg_model_p = np.exp(-seg_nll)
+
+                    if adaptive:
+                        log_probs = F.log_softmax(logits_f[i, s:wlen], dim=-1)
+                        probs_a = log_probs.exp()
+                        entropy = -(probs_a * log_probs).sum(dim=-1).cpu().numpy()
+                        sig = 1.0 / (1.0 + np.exp(-ent_scale * (entropy - ent_center)))
+                        per_token_alpha = alpha_min + (alpha_max - alpha_min) * sig
+                        # Bin entropy for 2D cubric: 0=low, 1=mid, 2=high
+                        _ent_bins = np.digitize(entropy, _ENT_EDGES).astype(np.int32)
+                    else:
+                        per_token_alpha = np.full(seg_len, alpha)
+                        _ent_bins = np.ones(seg_len, dtype=np.int32)  # all mid
+
+                    global_j = np.arange(ws + s + 1, ws + wlen + 1, dtype=np.int64)
+                    p_ng = np.zeros(seg_len, dtype=np.float64)
+                    ng_matched = np.zeros(seg_len, dtype=np.bool_)
+                    _ng_ord = np.zeros(seg_len, dtype=np.int32)
+                    _ng_ctx_count = np.zeros(seg_len, dtype=np.float64)
+                    tgt_np = val_np[global_j].astype(np.uint64)
+
+                    for n in range(max_order, min_order - 1, -1):
+                        ctx_width = n - 1
+                        valid = (global_j >= ctx_width) & (~ng_matched)
+                        if not valid.any():
+                            continue
+                        v_idx = np.nonzero(valid)[0]
+                        jv = global_j[v_idx]
+                        ctx_hash = np.zeros(len(jv), dtype=np.uint64)
+                        for k in range(ctx_width):
+                            tok = val_np[jv - (ctx_width - k)].astype(np.uint64)
+                            ctx_hash ^= tok * primes[k % len(primes)]
+                        ctx_key = (ctx_hash & mask).astype(np.int64)
+                        full_key = ((ctx_hash ^ (tgt_np[v_idx] * primes[ctx_width % len(primes)])) & mask).astype(np.int64)
+                        ctx_counts = ctx_tables[n][ctx_key].astype(np.float64)
+                        full_counts = full_tables[n][full_key].astype(np.float64)
+                        has_data = ctx_counts >= float(min_count)
+                        if has_data.any():
+                            p = np.minimum(full_counts, ctx_counts) / np.maximum(ctx_counts, 1.0)
+                            p = np.clip(p, 0.0, 1.0)
+                            hit_idx = v_idx[has_data]
+                            p_ng[hit_idx] = p[has_data]
+                            ng_matched[hit_idx] = True
+                            _ng_ord[hit_idx] = n
+                            _ng_ctx_count[hit_idx] = ctx_counts[has_data]
+
+                    # Mix where n-gram matched (PR #809 style or cubric 3D fallback)
+                    if ng_matched.any():
+                        m_idx = np.nonzero(ng_matched)[0]
+                        # Per-order entropy center shift (PR #809)
+                        if adaptive and args.ngram_entropy_shift:
+                            matched_ords = _ng_ord[m_idx].astype(np.float64)
+                            shifted_centers = ent_center - 0.25 * (matched_ords - float(min_order))
+                            shifted_sig = 1.0 / (1.0 + np.exp(-ent_scale * (entropy[m_idx] - shifted_centers)))
+                            per_token_alpha[m_idx] = alpha_min + (alpha_max - alpha_min) * shifted_sig
+                        if _fixed_order_mults is not None:
+                            # PR #809 fixed order multipliers (replaces cubric)
+                            a = per_token_alpha[m_idx].copy()
+                            mult_indices = _ng_ord[m_idx] - min_order
+                            mult_indices = np.clip(mult_indices, 0, len(_fixed_order_mults) - 1)
+                            a *= _fixed_order_mults[mult_indices]
+                            np.clip(a, 0.0, 0.95, out=a)
+                        elif _con:
+                            a = per_token_alpha[m_idx].copy()
+                            m_ent_bins = _ent_bins[m_idx]
+                            m_cnt_bins = np.digitize(_ng_ctx_count[m_idx], _CNT_EDGES).astype(np.int32)
+                            for n in range(min_order, max_order + 1):
+                                om = _ng_ord[m_idx] == n
+                                if not om.any():
+                                    continue
+                                for eb in range(_NUM_ENT_BINS):
+                                    for cb in range(_NUM_CNT_BINS):
+                                        cell = eb * _NUM_CNT_BINS + cb
+                                        mask_ecb = om & (m_ent_bins == eb) & (m_cnt_bins == cb)
+                                        if mask_ecb.any():
+                                            _c_hits[n][cell] += int(mask_ecb.sum())
+                                            _c_beats[n][cell] += int((p_ng[m_idx[mask_ecb]] > seg_model_p[m_idx[mask_ecb]]).sum())
+                                            a[mask_ecb] *= _c_alpha_mult[n][cell]
+                            np.clip(a, 0.0, 0.95, out=a)
+                        else:
+                            a = per_token_alpha[m_idx]
+                        seg_model_p[m_idx] = (1.0 - a) * seg_model_p[m_idx] + a * p_ng[m_idx]
+
+                    seg_nll = -np.log(np.clip(seg_model_p, 1e-12, 1.0))
+                    loss_sum += float(seg_nll.sum())
+                    token_count += float(seg_len)
+                    tgt = y_batch[i, s:wlen]
+                    prev = x_batch[i, s:wlen]
+                    tb = base_bytes_lut[tgt].to(torch.float64)
+                    tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
+                    byte_count += float(tb.sum().item())
+
+            # --- Phase 2: SHARED UPDATE -- all ranks update with same chunk tokens ---
+            chunk_start = ci * chunk_tokens
+            chunk_end = min((ci + 1) * chunk_tokens, total_tokens)
+            _ngram_bulk_update(val_np, chunk_start, chunk_end + 1,
+                               ctx_tables, full_tables, min_order, max_order,
+                               primes, mask)
+
+            # Cubric 2D c-step: adapt per (order x entropy_bin)
+            if _con:
+                # Collect all (order, ent_bin, cnt_bin) cells with enough data
+                all_rates = []
+                for n in range(min_order, max_order + 1):
+                    for cell in range(_TOTAL_CELLS):
+                        if _c_hits[n][cell] >= 8:
+                            all_rates.append(_c_beats[n][cell] / _c_hits[n][cell])
+                if len(all_rates) >= 4:
+                    avg_rate = sum(all_rates) / len(all_rates)
+                    for n in range(min_order, max_order + 1):
+                        for cell in range(_TOTAL_CELLS):
+                            if _c_hits[n][cell] >= 8:
+                                rate = _c_beats[n][cell] / _c_hits[n][cell]
+                                if rate > avg_rate + 0.05:
+                                    _c_alpha_mult[n][cell] = min(_c_alpha_mult[n][cell] * 1.03, 2.0)
+                                elif rate < avg_rate - 0.05:
+                                    _c_alpha_mult[n][cell] = max(_c_alpha_mult[n][cell] * 0.97, 0.3)
+                _cfired += 1
+                if rank == 0 and _cfired % 8 == 0:
+                    parts = []
+                    for n in range(min_order, max_order + 1):
+                        m = _c_alpha_mult[n]
+                        avg_m = sum(m) / len(m)
+                        parts.append(f"o{n}:avg={avg_m:.2f}")
+                    print(f"cubric3d:step={_cfired} {' '.join(parts)}", flush=True)
+                _c_hits = {n: [0] * _TOTAL_CELLS for n in range(min_order, max_order + 1)}
+                _c_beats = {n: [0] * _TOTAL_CELLS for n in range(min_order, max_order + 1)}
+
+            # Progress
+            if rank == 0 and (ci % 10 == 0 or ci == num_chunks - 1 or ci < 3):
+                elapsed = time.perf_counter() - t0
+                cur_bpb = (loss_sum / max(token_count, 1.0)) / math.log(2.0) * (token_count / max(byte_count, 1.0)) if token_count > 0 else 0.0
+                print(
+                    f"ngram_eval:chunk [{ci+1}/{num_chunks}] bpb={cur_bpb:.6f} t={elapsed:.0f}s",
+                    flush=True,
+                )
+
+    # All-reduce across ranks
+    _loss = torch.tensor(loss_sum, device=device, dtype=torch.float64)
+    _toks = torch.tensor(token_count, device=device, dtype=torch.float64)
+    _bytes = torch.tensor(byte_count, device=device, dtype=torch.float64)
+    if dist.is_available() and dist.is_initialized():
+        dist.all_reduce(_loss, op=dist.ReduceOp.SUM)
+        dist.all_reduce(_toks, op=dist.ReduceOp.SUM)
+        dist.all_reduce(_bytes, op=dist.ReduceOp.SUM)
+    loss_sum = _loss.item()
+    token_count = _toks.item()
+    byte_count = _bytes.item()
+
+    coverage = token_count / max(total_scored_tokens, 1.0)
+    if cutoff_hit:
+        elapsed = time.perf_counter() - t0
+        print(
+            f"ngram_eval:cutoff max_seconds={max_seconds:.1f} "
+            f"coverage={coverage*100:.2f}% elapsed={elapsed:.0f}s",
+            flush=True,
+        )
+
+    if _con and rank == 0:
+        print(f"cubric3d:final c_steps={_cfired} cells={_TOTAL_CELLS}x{max_order-min_order+1}={_TOTAL_CELLS*(max_order-min_order+1)}", flush=True)
+        for n in range(min_order, max_order + 1):
+            m = _c_alpha_mult[n]
+            row = " ".join(f"{m[cell]:.2f}" for cell in range(_TOTAL_CELLS))
+            print(f"  o{n}: [{row}]", flush=True)
+    val_loss = loss_sum / max(token_count, 1.0)
+    val_bpb = val_loss / math.log(2.0) * (token_count / max(byte_count, 1.0))
+    base_model.train()
+    return val_loss, val_bpb, coverage
+
+# --- Sliding window evaluation ---
+
+def eval_val_sliding(
+    args: Hyperparameters,
+    base_model: nn.Module,
+    rank: int,
+    world_size: int,
+    device: torch.device,
+    val_tokens: Tensor,
+    base_bytes_lut: Tensor,
+    has_leading_space_lut: Tensor,
+    is_boundary_token_lut: Tensor,
+    stride: int,
+    batch_seqs: int = 32,
+    eval_seq_len: int | None = None,
+) -> tuple[float, float]:
+    """Sliding window evaluation: each token scored with maximum context."""
+    seq_len = eval_seq_len or args.train_seq_len
+    total_tokens = val_tokens.numel() - 1
+    window_starts = [ws for ws in range(0, total_tokens, stride)
+                     if min(ws + seq_len, total_tokens) - ws >= 1]
+    total_windows = len(window_starts)
+    my_s = (total_windows * rank) // world_size
+    my_e = (total_windows * (rank + 1)) // world_size
+    my_windows = window_starts[my_s:my_e]
+    loss_sum = torch.zeros((), device=device, dtype=torch.float64)
+    token_count = torch.zeros((), device=device, dtype=torch.float64)
+    byte_count = torch.zeros((), device=device, dtype=torch.float64)
+    base_model.eval()
+    compiled_logits = maybe_compile(
+        base_model.forward_logits,
+        enabled=args.compile_enabled,
+        fullgraph=args.compile_fullgraph,
+    )
+    with torch.inference_mode():
+        for bi in range(0, len(my_windows), batch_seqs):
+            batch_ws = my_windows[bi:bi + batch_seqs]
+            bsz = len(batch_ws)
+            x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+            y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+            wlens: list[int] = []
+            for i, ws in enumerate(batch_ws):
+                end = min(ws + seq_len, total_tokens)
+                wlen = end - ws
+                wlens.append(wlen)
+                chunk = val_tokens[ws:end + 1].to(dtype=torch.int64, device=device)
+                x_batch[i, :wlen] = chunk[:-1]
+                y_batch[i, :wlen] = chunk[1:]
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                logits = compiled_logits(x_batch)
+            nll = F.cross_entropy(
+                logits.reshape(-1, logits.size(-1)).float(),
+                y_batch.reshape(-1),
+                reduction="none",
+            ).reshape(bsz, seq_len)
+            for i, ws in enumerate(batch_ws):
+                wlen = wlens[i]
+                s = 0 if ws == 0 else max(wlen - stride, 0)
+                scored_nll = nll[i, s:wlen].to(torch.float64)
+                loss_sum += scored_nll.sum()
+                token_count += float(wlen - s)
+                tgt = y_batch[i, s:wlen]
+                prev = x_batch[i, s:wlen]
+                tb = base_bytes_lut[tgt].to(torch.float64)
+                tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
+                byte_count += tb.sum()
+    if dist.is_available() and dist.is_initialized():
+        dist.all_reduce(loss_sum, op=dist.ReduceOp.SUM)
+        dist.all_reduce(token_count, op=dist.ReduceOp.SUM)
+        dist.all_reduce(byte_count, op=dist.ReduceOp.SUM)
+    val_loss = (loss_sum / token_count).item()
+    bits_per_token = val_loss / math.log(2.0)
+    tokens_per_byte = token_count.item() / byte_count.item()
+    base_model.train()
+    return val_loss, bits_per_token * tokens_per_byte
+
+
+
+# ==============================
+# INT6 GPTQ POST-TRAINING QUANTIZATION
+# ==============================
+
+def _compress(data: bytes) -> bytes:
+    if _COMPRESSOR == "zstd":
+        return _zstd.ZstdCompressor(level=22).compress(data)
+    return _zlib.compress(data, level=9)
+
+def _decompress(data: bytes) -> bytes:
+    if _COMPRESSOR == "zstd":
+        return _zstd.ZstdDecompressor().decompress(data, max_length=2 ** 33)
+    return _zlib.decompress(data)
+
+_GPTQ_KEEP_FLOAT_NUMEL = 65_536  # tensors <= this many elements are kept as float16
+
+def quantize_int6_per_row(t: Tensor, clip_range: int = 31) -> tuple[Tensor, Tensor]:
+    """Per-row INT6 quantization with 5-way clip sweep. Returns (q_int8, scale_fp16).
+    For 2D: scale is [rows], for 3D: scale is [slices, rows]. Vectors use scalar scale."""
+    t32 = t.float()
+    if t32.ndim >= 2:
+        tw = t32.reshape(-1, t32.shape[-1])  # [rows, cols]
+        best_q, best_s, best_err = None, None, float("inf")
+        for pct in [0.9990, 0.9995, 0.9999, 0.99999, 1.0]:
+            rc = torch.quantile(tw.abs(), pct, dim=1) if pct < 1.0 else tw.abs().amax(dim=1)
+            s = (rc / clip_range).clamp_min(1.0 / clip_range).to(torch.float16)
+            q = tw.div(s.float()[:, None]).round().clamp(-clip_range, clip_range).to(torch.int8)
+            err = (tw - q.float() * s.float()[:, None]).pow(2).mean().item()
+            if err < best_err:
+                best_q, best_s, best_err = q, s, err
+        return best_q.reshape(t32.shape).contiguous(), best_s.reshape(t32.shape[:-1]).contiguous()
+    amax = t32.abs().max().item()
+    scale = torch.tensor(amax / clip_range if amax > 0 else 1.0, dtype=torch.float16)
+    q = t32.div(scale.float()).round().clamp(-clip_range, clip_range).to(torch.int8)
+    return q.contiguous(), scale
+
+def _gptq_impl(W: Tensor, H: Tensor, clip_range: int, block_size: int) -> tuple[Tensor, Tensor]:
+    """Core GPTQ: column-by-column quantization with Hessian-based error propagation."""
+    n_out, n_in = W.shape
+    # Dead column + damping
+    H.diagonal().add_(0.01 * H.diag().mean().clamp_min(1e-8))
+    dead = H.diag() < 1e-10
+    H.diagonal()[dead] += 1.0
+    # Actorder: process columns in descending Hessian diagonal order
+    perm = H.diag().argsort(descending=True)
+    W = W[:, perm]
+    H = H[perm][:, perm]
+    # Pre-compute per-row scales from (permuted) weight range - 5-way sweep
+    _, s = quantize_int6_per_row(W.clone(), clip_range)  # s: [n_out] float16
+    s_f = s.float()
+    # Cholesky inverse of Hessian
+    L = torch.linalg.cholesky(H)
+    H_inv = torch.cholesky_inverse(L)
+    # GPTQ: quantize column by column, propagate error to remaining columns
+    W_q = torch.empty_like(W, dtype=torch.int8)
+    for j in range(n_in):
+        w_col = W[:, j]
+        q_col = w_col.div(s_f).round().clamp(-clip_range, clip_range).to(torch.int8)
+        W_q[:, j] = q_col
+        err = w_col - q_col.float() * s_f  # [n_out]
+        if j + 1 < n_in:
+            W[:, j + 1 :] -= err[:, None] * (H_inv[j, j + 1 :] / H_inv[j, j].clamp_min(1e-8))
+    # Un-permute columns back to original order
+    inv_perm = perm.argsort()
+    return W_q[:, inv_perm].contiguous(), s
+
+def quantize_int6_gptq(
+    weight: Tensor,
+    hessian: Tensor | None = None,
+    clip_range: int = 31,
+    block_size: int = 128,
+) -> tuple[Tensor, Tensor]:
+    """Full Hessian GPTQ for a 2D weight matrix. Falls back to per-row on failure."""
+    if hessian is None or weight.ndim != 2:
+        return quantize_int6_per_row(weight, clip_range)
+    try:
+        return _gptq_impl(weight.float().clone(), hessian.float().clone(), clip_range, block_size)
+    except Exception:
+        return quantize_int6_per_row(weight, clip_range)
+
+def _collect_hessians(
+    model: nn.Module,
+    get_batch_fn,
+    n_batches: int,
+    device: torch.device,
+) -> dict[str, Tensor]:
+    """Accumulate calibration Hessians (X^T X) for each weight type.
+    Returns dict: h_attn_in, h_attn_out, h_mlp_in, h_mlp_act — shared across all layers."""
+    model_dim = model.qo_bank.shape[1]
+    mlp_dim = model.mlp_up_bank.shape[1]
+    bufs = {
+        "h_attn_in": torch.zeros(model_dim, model_dim, device=device),
+        "h_attn_out": torch.zeros(model_dim, model_dim, device=device),
+        "h_mlp_in": torch.zeros(model_dim, model_dim, device=device),
+        "h_mlp_act": torch.zeros(mlp_dim, mlp_dim, device=device),
+    }
+    hooks = []
+    for block in model.blocks:
+        # Pre-hook on attn: capture attn_in (input to Q, K, V projections)
+        def _mk_attn_in_hook(b):
+            def _h(module, args):
+                x = args[0].detach().float().reshape(-1, model_dim)
+                b["h_attn_in"].addmm_(x.T, x)
+            return _h
+        hooks.append(block.attn.register_forward_pre_hook(_mk_attn_in_hook(bufs)))
+        # Pre-hook on mlp: capture mlp_in (input to MLP-up projection)
+        def _mk_mlp_in_hook(b):
+            def _h(module, args):
+                x = args[0].detach().float().reshape(-1, model_dim)
+                b["h_mlp_in"].addmm_(x.T, x)
+            return _h
+        hooks.append(block.mlp.register_forward_pre_hook(_mk_mlp_in_hook(bufs)))
+        # Callback in attn: capture y (pre-O-projection attn output)
+        def _mk_attn_out_save(b):
+            def _fn(y):
+                yf = y.float().reshape(-1, model_dim)
+                b["h_attn_out"].addmm_(yf.T, yf)
+            return _fn
+        block.attn._calib_save_y = _mk_attn_out_save(bufs)
+        # Callback in mlp: capture activation (pre-MLP-down)
+        def _mk_mlp_act_save(b):
+            def _fn(h):
+                hf = h.float().reshape(-1, mlp_dim)
+                b["h_mlp_act"].addmm_(hf.T, hf)
+            return _fn
+        block.mlp._calib_save_act = _mk_mlp_act_save(bufs)
+    model.eval()
+    with torch.no_grad():
+        for _ in range(n_batches):
+            x, y = get_batch_fn()
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
+                model(x, y)
+    # Remove all hooks and callbacks
+    for h in hooks:
+        h.remove()
+    for block in model.blocks:
+        block.attn._calib_save_y = None
+        block.mlp._calib_save_act = None
+    return bufs
+
+def quantize_state_dict_int6_gptq(
+    state_dict: dict[str, Tensor],
+    hessians: dict[str, Tensor],
+    n_layers: int,
+    clip_range: int = 31,
+    block_size: int = 128,
+) -> tuple[dict, dict]:
+    """Quantize the model state dict to INT6. Returns (quant_obj, stats)."""
+    h_qkv = hessians.get("h_attn_in")
+    h_o = hessians.get("h_attn_out")
+    h_mlp_up = hessians.get("h_mlp_in")
+    h_mlp_dn = hessians.get("h_mlp_act")
+    quantized: dict[str, Tensor] = {}
+    scales: dict[str, Tensor] = {}
+    passthrough: dict[str, Tensor] = {}
+    dtypes: dict[str, str] = {}
+    stats = {"baseline_bytes": 0, "quant_bytes": 0, "n_quant": 0, "n_pass": 0}
+
+    def _q_bank(t3d: Tensor, hess_fn) -> tuple[Tensor, Tensor]:
+        """Quantize each slice of a 3D bank tensor [slices, rows, cols]."""
+        qs = torch.zeros_like(t3d, dtype=torch.int8)
+        ss = torch.zeros(t3d.shape[0], t3d.shape[1], dtype=torch.float16)
+        for i in range(t3d.shape[0]):
+            h_i = hess_fn(i)
+            q_i, s_i = quantize_int6_gptq(t3d[i].float(), h_i, clip_range, block_size)
+            qs[i] = q_i
+            ss[i] = s_i
+        return qs.contiguous(), ss.contiguous()
+
+    for name, t in state_dict.items():
+        t = t.detach().cpu()
+        stats["baseline_bytes"] += t.numel() * t.element_size()
+        orig_dtype = str(t.dtype).removeprefix("torch.")
+        # Skip non-float, small, or control tensors → passthrough as float16
+        should_passthrough = (
+            not t.is_floating_point()
+            or t.numel() <= _GPTQ_KEEP_FLOAT_NUMEL
+            or any(p in name for p in CONTROL_TENSOR_NAME_PATTERNS)
+            or "mtp_heads" in name
+        )
+        if should_passthrough:
+            stored = t.to(torch.float16) if t.is_floating_point() else t
+            passthrough[name] = stored.contiguous()
+            dtypes[name] = orig_dtype
+            stats["n_pass"] += 1
+            stats["quant_bytes"] += stored.numel() * stored.element_size()
+            continue
+        # Bank tensors: quantize each slice with the appropriate Hessian
+        if name == "qo_bank":
+            # [2*n, d, d]: first n = Q, second n = O
+            q, s = _q_bank(t, lambda i: h_qkv if i < n_layers else h_o)
+        elif name == "kv_bank":
+            # [2*n, kv_dim, d]: both K and V see attn_in
+            q, s = _q_bank(t, lambda i: h_qkv)
+        elif name == "mlp_up_bank":
+            q, s = _q_bank(t, lambda i: h_mlp_up)
+        elif name == "mlp_down_bank":
+            q, s = _q_bank(t, lambda i: h_mlp_dn)
+        elif t.ndim == 2:
+            # Generic 2D: per-row quantization (bigram proj, VE proj, etc.)
+            q, s = quantize_int6_per_row(t.float(), clip_range)
+        else:
+            # 1D or irregular: passthrough
+            stored = t.to(torch.float16) if t.is_floating_point() else t
+            passthrough[name] = stored.contiguous()
+            dtypes[name] = orig_dtype
+            stats["n_pass"] += 1
+            stats["quant_bytes"] += stored.numel() * stored.element_size()
+            continue
+        quantized[name] = q
+        scales[name] = s
+        dtypes[name] = orig_dtype
+        stats["n_quant"] += 1
+        stats["quant_bytes"] += q.numel() * q.element_size() + s.numel() * s.element_size()
+
+    quant_obj = {
+        "__quant_format__": "int6_gptq_per_row_v1",
+        "quantized": quantized,
+        "scales": scales,
+        "dtypes": dtypes,
+        "passthrough": passthrough,
+    }
+    return quant_obj, stats
+
+def dequantize_state_dict_int6(quant_obj: dict) -> dict[str, Tensor]:
+    """Restore float state dict from INT6 quant_obj."""
+    out: dict[str, Tensor] = {}
+    dtypes = quant_obj.get("dtypes", {})
+    for name, q in quant_obj["quantized"].items():
+        target_dtype = getattr(torch, dtypes.get(name, "bfloat16"))
+        s = quant_obj["scales"][name]
+        if q.ndim == 3:
+            # Bank: [slices, rows, cols], scales: [slices, rows]
+            recon = q.float() * s.float()[:, :, None]
+        elif q.ndim == 2:
+            # 2D: [rows, cols], scales: [rows]
+            recon = q.float() * s.float()[:, None]
+        else:
+            recon = q.float() * s.float()
+        out[name] = recon.to(target_dtype).contiguous()
+    for name, t in quant_obj["passthrough"].items():
+        target_dtype_str = dtypes.get(name)
+        if target_dtype_str and t.is_floating_point():
+            out[name] = t.to(getattr(torch, target_dtype_str)).contiguous()
+        else:
+            out[name] = t.contiguous()
+    return out
+
+def pack_and_compress_quant_obj(quant_obj: dict) -> bytes:
+    buf = io.BytesIO()
+    torch.save(quant_obj, buf)
+    return _compress(buf.getvalue())
+
+def load_and_decompress_quant_obj(data: bytes) -> dict:
+    raw = _decompress(data)
+    return torch.load(io.BytesIO(raw), map_location="cpu", weights_only=False)
+
+
+# --- Training ---
+
+def main() -> None:
+    code = Path(__file__).read_text(encoding="utf-8")
+    args = Hyperparameters()
+    # zeropower_via_newtonschulz5 runs eagerly with bmm -- do NOT compile
+    distributed = "RANK" in os.environ and "WORLD_SIZE" in os.environ
+    rank = int(os.environ.get("RANK", "0"))
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    if world_size <= 0:
+        raise ValueError(f"WORLD_SIZE must be positive, got {world_size}")
+    if 8 % world_size != 0:
+        raise ValueError(f"WORLD_SIZE={world_size} must divide 8 so grad_accum_steps stays integral")
+    grad_accum_steps = 8 // world_size
+    grad_scale = 1.0 / grad_accum_steps
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is required")
+    device = torch.device("cuda", local_rank)
+    torch.cuda.set_device(device)
+    if distributed:
+        dist.init_process_group(backend="nccl", device_id=device)
+        dist.barrier()
+    master_process = rank == 0
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+    from torch.backends.cuda import enable_cudnn_sdp, enable_flash_sdp, enable_math_sdp, enable_mem_efficient_sdp
+    enable_cudnn_sdp(False)
+    enable_flash_sdp(True)
+    enable_mem_efficient_sdp(False)
+    enable_math_sdp(False)
+    logfile = None
+    if master_process:
+        os.makedirs("logs", exist_ok=True)
+        logfile = f"logs/{args.run_id}.txt"
+        print(logfile)
+    def log0(msg: str, console: bool = True) -> None:
+        if not master_process:
+            return
+        if console:
+            print(msg)
+        if logfile is not None:
+            with open(logfile, "a", encoding="utf-8") as f:
+                print(msg, file=f)
+    log0(code, console=False)
+    log0("=" * 100, console=False)
+    log0(f"Running Python {sys.version}", console=False)
+    log0(f"Running PyTorch {torch.__version__}", console=False)
+    log0(
+        subprocess.run(["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False).stdout,
+        console=False,
+    )
+    log0("=" * 100, console=False)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    if not args.tokenizer_path.endswith(".model"):
+        raise ValueError(f"Script only setup for SentencePiece .model file: {args.tokenizer_path}")
+    sp = spm.SentencePieceProcessor(model_file=args.tokenizer_path)
+    if int(sp.vocab_size()) != args.vocab_size:
+        raise ValueError(
+            f"VOCAB_SIZE={args.vocab_size} does not match tokenizer vocab_size={int(sp.vocab_size())}"
+        )
+    dataset_dir = Path(args.data_path).resolve()
+    actual_train_files = len(list(dataset_dir.glob("fineweb_train_*.bin")))
+    effective_eval_seq_len = args.eval_seq_len if args.eval_seq_len > 0 else args.train_seq_len
+    val_seq_len = max(args.train_seq_len, effective_eval_seq_len)
+    val_tokens = load_validation_tokens(args.val_files, val_seq_len)
+    base_bytes_lut, has_leading_space_lut, is_boundary_token_lut = build_sentencepiece_luts(
+        sp, args.vocab_size, device
+    )
+    log0(f"val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path={args.tokenizer_path}")
+    if args.ngram_eval_order >= 2:
+        log0(f"ngram_eval:order={args.ngram_eval_order} alpha={args.ngram_eval_alpha} min_count={args.ngram_eval_min_count} buckets={args.ngram_eval_buckets}")
+    log0(f"train_loader:dataset:{dataset_dir.name} train_shards:{actual_train_files}")
+    log0(f"val_loader:shards pattern={args.val_files} tokens:{val_tokens.numel() - 1}")
+    CastedLinear._qat_enabled = args.qat_enabled
+    base_model = GPT(
+        vocab_size=args.vocab_size,
+        num_layers=args.num_layers,
+        model_dim=args.model_dim,
+        num_heads=args.num_heads,
+        num_kv_heads=args.num_kv_heads,
+        mlp_mult=args.mlp_mult,
+        tie_embeddings=args.tie_embeddings,
+        tied_embed_init_std=args.tied_embed_init_std,
+        logit_softcap=args.logit_softcap,
+        rope_base=args.rope_base,
+        qk_gain_init=args.qk_gain_init,
+        mtp_num_heads=args.mtp_num_heads,
+        mtp_loss_weight=args.mtp_loss_weight,
+        bigram_vocab_size=args.bigram_vocab_size,
+        bigram_dim=args.bigram_dim,
+        xsa_last_n=args.xsa_last_n,
+        rope_dims=args.rope_dims,
+        ln_scale=args.ln_scale,
+        dtg=args.dtg_enabled,
+        ve_enabled=args.ve_enabled,
+        ve_dim=args.ve_dim,
+        ve_layers=args.ve_layers,
+        gated_attention=args.gated_attention,
+        value_residual=args.value_residual,
+    ).to(device).bfloat16()
+    # Banks stay FP32 (like CastedLinear weights), cast to BF16 in forward
+    base_model.qo_bank.data = base_model.qo_bank.data.float()
+    base_model.kv_bank.data = base_model.kv_bank.data.float()
+    base_model.mlp_up_bank.data = base_model.mlp_up_bank.data.float()
+    base_model.mlp_down_bank.data = base_model.mlp_down_bank.data.float()
+    for module in base_model.modules():
+        if isinstance(module, CastedLinear):
+            module.float()
+    restore_low_dim_params_to_fp32(base_model)
+    if args.complement_alpha > 0:
+        tracker = TrainNgramTracker(args.vocab_size, device, complement_alpha=args.complement_alpha)
+        base_model._ngram_tracker = tracker
+        log0(f"complementary_training:alpha={args.complement_alpha}")
+    else:
+        base_model._ngram_tracker = None
+    # No DDP -- Parallel Muon handles bank grad communication via reduce-scatter,
+    # and non-bank grads are manually all-reduced before Adam steps.
+    compiled_model = maybe_compile(
+        base_model,
+        enabled=args.compile_enabled,
+        fullgraph=args.compile_fullgraph,
+        mode=args.compile_mode,
+    )
+    model = compiled_model
+
+    # Optimizer split:
+    # - 4 parameter banks -> Muon (batched Newton-Schulz)
+    # - token embedding -> Adam
+    # - scalars/control tensors -> Adam
+    # - bigram proj, mtp heads, VE proj -> Adam (small matrix params not worth banking)
+    matrix_params = [
+        base_model.qo_bank, base_model.kv_bank,
+        base_model.mlp_up_bank, base_model.mlp_down_bank,
+    ]
+    block_named_params = list(base_model.blocks.named_parameters())
+    scalar_params = [
+        p
+        for name, p in block_named_params
+        if p.ndim < 2 or any(pattern in name for pattern in CONTROL_TENSOR_NAME_PATTERNS)
+    ]
+    if base_model.skip_weights.numel() > 0:
+        scalar_params.append(base_model.skip_weights)
+    scalar_params.append(base_model.smear.gate)
+    if base_model.bigram is not None:
+        scalar_params.append(base_model.bigram.scale)
+    token_lr = args.tied_embed_lr if args.tie_embeddings else args.embed_lr
+    tok_params = [{"params": [base_model.tok_emb.weight], "lr": token_lr, "base_lr": token_lr}]
+    if base_model.bigram is not None:
+        tok_params.append({"params": [base_model.bigram.embed.weight], "lr": token_lr, "base_lr": token_lr})
+        if base_model.bigram.proj is not None:
+            scalar_params.append(base_model.bigram.proj.weight)
+    if base_model.ve_shared is not None:
+        tok_params.append({"params": [base_model.ve_shared.embed.weight], "lr": token_lr, "base_lr": token_lr})
+        if base_model.ve_shared.proj is not None:
+            scalar_params.append(base_model.ve_shared.proj.weight)
+        scalar_params.append(base_model.ve_shared.scale)
+        for s in base_model.ve_layer_scales:
+            scalar_params.append(s)
+    optimizer_tok = torch.optim.AdamW(
+        tok_params,
+        betas=(args.beta1, args.beta2),
+        eps=args.adam_eps,
+        weight_decay=args.adam_wd,
+        fused=True,
+    )
+    optimizer_muon = Muon(
+        matrix_params,
+        lr=args.matrix_lr,
+        momentum=args.muon_momentum,
+        backend_steps=args.muon_backend_steps,
+        weight_decay=args.muon_wd,
+    )
+    for group in optimizer_muon.param_groups:
+        group["base_lr"] = args.matrix_lr
+    optimizer_scalar = torch.optim.AdamW(
+        [{"params": scalar_params, "lr": args.scalar_lr, "base_lr": args.scalar_lr}],
+        betas=(args.beta1, args.beta2),
+        eps=args.adam_eps,
+        weight_decay=args.adam_wd,
+        fused=True,
+    )
+    # Non-bank params that need manual all-reduce (replicated across GPUs)
+    replicated_params = list(optimizer_tok.param_groups[0]["params"])
+    for pg in optimizer_tok.param_groups[1:]:
+        replicated_params.extend(pg["params"])
+    replicated_params.extend(scalar_params)
+
+    optimizer_head = None
+    if base_model.lm_head is not None:
+        optimizer_head = torch.optim.Adam(
+            [{"params": [base_model.lm_head.weight], "lr": args.head_lr, "base_lr": args.head_lr}],
+            betas=(args.beta1, args.beta2),
+            eps=args.adam_eps,
+            fused=True,
+        )
+        replicated_params.append(base_model.lm_head.weight)
+    optimizers: list[torch.optim.Optimizer] = [optimizer_tok, optimizer_muon, optimizer_scalar]
+    if optimizer_head is not None:
+        optimizers.append(optimizer_head)
+    n_params = sum(p.numel() for p in base_model.parameters())
+    mtp_params = sum(p.numel() for p in base_model.mtp_heads.parameters())
+    log0(f"model_params:{n_params}")
+    log0(f"mtp_num_heads:{args.mtp_num_heads} mtp_loss_weight:{args.mtp_loss_weight} mtp_params:{mtp_params}")
+    xsa_layers = [i for i, b in enumerate(base_model.blocks) if b.attn.use_xsa]
+    log0(f"XSA:last_{args.xsa_last_n} active_layers:{xsa_layers}")
+    log0(f"world_size:{world_size} grad_accum_steps:{grad_accum_steps}")
+    log0("sdp_backends:cudnn=False flash=True mem_efficient=False math=False")
+    log0(f"attention_mode:gqa num_heads:{args.num_heads} num_kv_heads:{args.num_kv_heads}")
+    log0(
+        f"tie_embeddings:{args.tie_embeddings} embed_lr:{token_lr} "
+        f"head_lr:{args.head_lr if base_model.lm_head is not None else 0.0} "
+        f"matrix_lr:{args.matrix_lr} scalar_lr:{args.scalar_lr}"
+    )
+    log0(
+        f"train_batch_tokens:{args.train_batch_tokens} train_seq_len:{args.train_seq_len} "
+        f"iterations:{args.iterations} warmup_steps:{args.warmup_steps} "
+        f"max_wallclock_seconds:{args.max_wallclock_seconds:.3f}"
+    )
+    compile_mode = args.compile_mode if args.compile_mode else "default"
+    log0(
+        f"compile:enabled={int(args.compile_enabled)} mode:{compile_mode} "
+        f"fullgraph={int(args.compile_fullgraph)}"
+    )
+    log0(f"mlp_kernel_mode:{args.mlp_kernel_mode or 'eager'}")
+    log0(
+        f"scale_init:attn={args.attn_scale_init:.4f} mlp={args.mlp_scale_init:.4f} "
+        f"resid_mix=({args.resid_mix_x_init:.4f},{args.resid_mix_x0_init:.4f}) "
+        f"ln_scale={int(args.ln_scale)}"
+    )
+    log0(f"seed:{args.seed}")
+    train_loader = build_train_loader(args, rank, world_size, device)
+    log0(train_loader.describe())
+    def zero_grad_all() -> None:
+        for opt in optimizers:
+            opt.zero_grad(set_to_none=True)
+    max_wallclock_ms = 1000.0 * args.max_wallclock_seconds if args.max_wallclock_seconds > 0 else None
+    def lr_mul(step: int, elapsed_ms: float) -> float:
+        if args.warmdown_iters <= 0:
+            return 1.0
+        if max_wallclock_ms is None:
+            warmdown_start = max(args.iterations - args.warmdown_iters, 0)
+            return max((args.iterations - step) / max(args.warmdown_iters, 1), 0.0) if warmdown_start <= step < args.iterations else 1.0
+        step_ms = elapsed_ms / max(step, 1)
+        warmdown_ms = args.warmdown_iters * step_ms
+        remaining_ms = max(max_wallclock_ms - elapsed_ms, 0.0)
+        return remaining_ms / max(warmdown_ms, 1e-9) if remaining_ms <= warmdown_ms else 1.0
+    if args.warmup_steps > 0:
+        initial_model_state = {name: tensor.detach().cpu().clone() for name, tensor in base_model.state_dict().items()}
+        initial_optimizer_states = [copy.deepcopy(opt.state_dict()) for opt in optimizers]
+        model.train()
+        for warmup_step in range(args.warmup_steps):
+            zero_grad_all()
+            for micro_step in range(grad_accum_steps):
+                x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
+                    warmup_loss = model(x, y)
+                (warmup_loss * grad_scale).backward()
+            # All-reduce all grads for warmup (simple, not optimized)
+            if distributed:
+                for p in base_model.parameters():
+                    if p.grad is not None:
+                        dist.all_reduce(p.grad, op=dist.ReduceOp.AVG)
+            for opt in optimizers:
+                opt.step()
+            zero_grad_all()
+            if args.warmup_steps <= 20 or (warmup_step + 1) % 10 == 0 or warmup_step + 1 == args.warmup_steps:
+                log0(f"warmup_step:{warmup_step + 1}/{args.warmup_steps}")
+        base_model.load_state_dict(initial_model_state, strict=True)
+        for opt, state in zip(optimizers, initial_optimizer_states, strict=True):
+            opt.load_state_dict(state)
+        zero_grad_all()
+        train_loader = build_train_loader(args, rank, world_size, device)
+        log0(f"loader_reset:{train_loader.describe()}")
+    swa_state: dict[str, Tensor] | None = None
+    swa_count = 0
+    from collections import deque
+    lawa_queue: deque[dict[str, Tensor]] = deque(maxlen=args.lawa_k)
+    ema_state = {name: t.detach().float().clone() for name, t in base_model.state_dict().items()}
+    ema_decay = 0.997
+    training_time_ms = 0.0
+    stop_after_step: int | None = None
+    torch.cuda.synchronize()
+    t0 = time.perf_counter()
+    step = 0
+    while True:
+        last_step = step == args.iterations or (stop_after_step is not None and step >= stop_after_step)
+        should_validate = last_step or (args.val_loss_every > 0 and step % args.val_loss_every == 0)
+        if should_validate:
+            torch.cuda.synchronize()
+            training_time_ms += 1000.0 * (time.perf_counter() - t0)
+            val_loss, val_bpb = eval_val(
+                args,
+                model,
+                rank,
+                world_size,
+                device,
+                grad_accum_steps,
+                val_tokens,
+                base_bytes_lut,
+                has_leading_space_lut,
+                is_boundary_token_lut,
+            )
+            log0(
+                f"step:{step}/{args.iterations} val_loss:{val_loss:.4f} val_bpb:{val_bpb:.4f} "
+                f"train_time:{training_time_ms:.0f}ms step_avg:{training_time_ms / max(step, 1):.2f}ms"
+            )
+            torch.cuda.synchronize()
+            t0 = time.perf_counter()
+        if last_step:
+            if stop_after_step is not None and step < args.iterations:
+                log0(
+                    f"stopping_early: wallclock_cap train_time:{training_time_ms:.0f}ms "
+                    f"step:{step}/{args.iterations}"
+                )
+            break
+        elapsed_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
+        scale = lr_mul(step, elapsed_ms)
+        if args.late_qat_threshold > 0 and scale < args.late_qat_threshold and not CastedLinear._qat_enabled:
+            CastedLinear._qat_enabled = True
+            log0(f"late_qat:enabled step:{step} scale:{scale:.4f}")
+        zero_grad_all()
+        train_loss = torch.zeros((), device=device)
+        for micro_step in range(grad_accum_steps):
+            x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
+                loss = model(x, y)
+            train_loss += loss.detach()
+            (loss * grad_scale).backward()
+            if base_model._ngram_tracker is not None:
+                base_model._ngram_tracker.update(x, y)
+        train_loss /= grad_accum_steps
+        frac = min(step / args.muon_momentum_warmup_steps, 1.0) if args.muon_momentum_warmup_steps > 0 else 1.0
+        muon_momentum = (1 - frac) * args.muon_momentum_warmup_start + frac * args.muon_momentum
+        for group in optimizer_muon.param_groups:
+            group["momentum"] = muon_momentum
+        for opt in optimizers:
+            for group in opt.param_groups:
+                group["lr"] = group["base_lr"] * scale
+        if args.grad_clip_norm > 0:
+            torch.nn.utils.clip_grad_norm_(base_model.parameters(), args.grad_clip_norm)
+        # === 3-phase overlapped optimizer step ===
+        # Phase 1: Launch async reduce-scatter for banks (biggest first)
+        optimizer_muon.launch_reduce_scatters()
+        # Phase 2: All-reduce non-bank grads + step Adam (while bank RS is in-flight)
+        if distributed:
+            for p in replicated_params:
+                if p.grad is not None:
+                    dist.all_reduce(p.grad, op=dist.ReduceOp.AVG)
+        optimizer_tok.step()
+        optimizer_scalar.step()
+        if optimizer_head is not None:
+            optimizer_head.step()
+        # Phase 3: Wait for RS, local NS5, all-gather (banks processed last)
+        optimizer_muon.step()
+        zero_grad_all()
+        # EMA update
+        with torch.no_grad():
+            for name, t in base_model.state_dict().items():
+                ema_state[name].mul_(ema_decay).add_(t.detach().float(), alpha=1.0 - ema_decay)
+        step += 1
+        approx_training_time_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
+        if args.swa_enabled and scale < 0.2 and step % args.swa_every == 0:
+            if swa_state is None:
+                swa_state = {name: t.detach().cpu().clone() for name, t in base_model.state_dict().items()}
+                swa_count = 1
+                log0(f"swa:start step:{step}")
+            else:
+                for name, t in base_model.state_dict().items():
+                    swa_state[name] += t.detach().cpu()
+                swa_count += 1
+        if args.lawa_enabled and step % args.lawa_freq == 0:
+            lawa_queue.append({name: t.detach().cpu().clone() for name, t in base_model.state_dict().items()})
+        should_log_train = (
+            args.train_log_every > 0
+            and (step <= 10 or step % args.train_log_every == 0 or stop_after_step is not None)
+        )
+        if should_log_train:
+            log0(
+                f"step:{step}/{args.iterations} train_loss:{train_loss.item():.4f} "
+                f"train_time:{approx_training_time_ms:.0f}ms step_avg:{approx_training_time_ms / step:.2f}ms"
+            )
+        reached_cap = max_wallclock_ms is not None and approx_training_time_ms >= max_wallclock_ms
+        if distributed and max_wallclock_ms is not None:
+            reached_cap_tensor = torch.tensor(int(reached_cap), device=device)
+            dist.all_reduce(reached_cap_tensor, op=dist.ReduceOp.MAX)
+            reached_cap = bool(reached_cap_tensor.item())
+        if stop_after_step is None and reached_cap:
+            stop_after_step = step
+    log0(
+        f"peak memory allocated: {torch.cuda.max_memory_allocated() // 1024 // 1024} MiB "
+        f"reserved: {torch.cuda.max_memory_reserved() // 1024 // 1024} MiB"
+    )
+    # Apply weight averaging
+    if args.lawa_enabled and len(lawa_queue) > 1:
+        log0(f"lawa:applying LAWA averaging k={len(lawa_queue)}")
+        current_state = base_model.state_dict()
+        avg_state = {name: torch.zeros(t.shape, dtype=torch.float32, device='cpu') for name, t in current_state.items()}
+        for snap in lawa_queue:
+            for name in avg_state:
+                avg_state[name] += snap[name].float()
+        for name in avg_state:
+            avg_state[name] /= len(lawa_queue)
+            avg_state[name] = avg_state[name].to(dtype=current_state[name].dtype)
+        base_model.load_state_dict(avg_state, strict=True)
+    else:
+        log0("ema:applying EMA weights")
+        current_state = base_model.state_dict()
+        avg_state = {name: t.to(dtype=current_state[name].dtype) for name, t in ema_state.items()}
+        base_model.load_state_dict(avg_state, strict=True)
+    if args.post_ema_diagnostic:
+        torch.cuda.synchronize()
+        t_diag = time.perf_counter()
+        diag_val_loss, diag_val_bpb = eval_val(
+            args, compiled_model, rank, world_size, device, grad_accum_steps,
+            val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
+        )
+        torch.cuda.synchronize()
+        log0(
+            f"DIAGNOSTIC post_ema val_loss:{diag_val_loss:.4f} val_bpb:{diag_val_bpb:.4f} "
+            f"eval_time:{1000.0 * (time.perf_counter() - t_diag):.0f}ms"
+        )
+    else:
+        log0("diagnostic_eval:skipped POST_EMA_DIAGNOSTIC=0")
+    full_state_dict = base_model.state_dict()
+    export_sd = {k: v for k, v in full_state_dict.items() if "mtp_heads" not in k}
+    excluded_mtp = sum(int(t.numel()) for k, t in full_state_dict.items() if "mtp_heads" in k)
+    if excluded_mtp > 0:
+        log0(f"export_excluding_mtp_params:{excluded_mtp}")
+    code_bytes = len(code.encode("utf-8"))
+    if master_process:
+        torch.save(export_sd, "final_model.pt")
+        model_bytes = os.path.getsize("final_model.pt")
+        log0(f"Serialized model (raw): {model_bytes} bytes  code: {code_bytes} bytes")
+
+    # --- INT6 GPTQ POST-TRAINING QUANTIZATION ---
+    if args.gptq_enabled:
+        t_gptq_start = time.perf_counter()
+        log0(f"gptq:start compressor={_COMPRESSOR} calib_batches={args.gptq_calib_batches} clip_range={args.gptq_clip_range}")
+        if master_process:
+            # Collect Hessians via calibration forward passes (rank 0 only)
+            def _get_calib_batch():
+                return train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
+            base_model.eval()
+            hessians = _collect_hessians(base_model, _get_calib_batch, args.gptq_calib_batches, device)
+            log0(f"gptq:hessians_collected time={1000*(time.perf_counter()-t_gptq_start):.0f}ms")
+            # Quantize state dict
+            quant_obj, qstats = quantize_state_dict_int6_gptq(
+                export_sd, hessians, args.num_layers,
+                clip_range=args.gptq_clip_range, block_size=args.gptq_block_size,
+            )
+            del hessians  # free GPU memory
+            quant_ratio = qstats["baseline_bytes"] / max(qstats["quant_bytes"], 1)
+            log0(
+                f"gptq:quantized baseline={qstats['baseline_bytes']} quant={qstats['quant_bytes']} "
+                f"ratio={quant_ratio:.2f}x n_quant={qstats['n_quant']} n_pass={qstats['n_pass']}"
+            )
+            # Serialize + compress
+            compressed = pack_and_compress_quant_obj(quant_obj)
+            quant_path = "final_model.int6.zst"
+            with open(quant_path, "wb") as f:
+                f.write(compressed)
+            total_artifact = len(compressed) + code_bytes
+            log0(
+                f"gptq:saved path={quant_path} file_bytes={len(compressed)} "
+                f"total_artifact={total_artifact} gptq_time={1000*(time.perf_counter()-t_gptq_start):.0f}ms"
+            )
+        if distributed:
+            dist.barrier()
+        # All ranks: load quantized weights and restore model for final eval
+        with open("final_model.int6.zst", "rb") as f:
+            compressed_disk = f.read()
+        quant_obj_disk = load_and_decompress_quant_obj(compressed_disk)
+        dequant_state = dequantize_state_dict_int6(quant_obj_disk)
+        base_model.load_state_dict(dequant_state, strict=True)
+        log0("gptq:round_trip_ok model_restored_from_int6")
+    sw_seq_len = effective_eval_seq_len
+    if args.skip_final_eval:
+        log0("final_eval:skipped sliding/ngram by SKIP_FINAL_EVAL=1")
+    else:
+        if args.eval_stride > 0 and args.eval_stride < sw_seq_len:
+            torch.cuda.synchronize()
+            t_slide = time.perf_counter()
+            sw_val_loss, sw_val_bpb = eval_val_sliding(
+                args, base_model, rank, world_size, device,
+                val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
+                stride=args.eval_stride,
+                eval_seq_len=sw_seq_len,
+            )
+            torch.cuda.synchronize()
+            log0(
+                f"final_sliding_window val_loss:{sw_val_loss:.4f} val_bpb:{sw_val_bpb:.4f} "
+                f"stride:{args.eval_stride} eval_time:{1000.0 * (time.perf_counter() - t_slide):.0f}ms"
+            )
+            log0(f"final_sliding_window_exact val_loss:{sw_val_loss:.8f} val_bpb:{sw_val_bpb:.8f}")
+        if args.eval_stride != 64 and 64 < sw_seq_len:
+            torch.cuda.synchronize()
+            t_slide64 = time.perf_counter()
+            sw64_val_loss, sw64_val_bpb = eval_val_sliding(
+                args, base_model, rank, world_size, device,
+                val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
+                stride=64,
+                eval_seq_len=sw_seq_len,
+            )
+            torch.cuda.synchronize()
+            log0(
+                f"final_sliding_window_s64 val_loss:{sw64_val_loss:.4f} val_bpb:{sw64_val_bpb:.4f} "
+                f"stride:64 eval_time:{1000.0 * (time.perf_counter() - t_slide64):.0f}ms"
+            )
+            log0(f"final_sliding_window_s64_exact val_loss:{sw64_val_loss:.8f} val_bpb:{sw64_val_bpb:.8f}")
+        if args.ngram_eval_order >= 2:
+            if distributed:
+                dist.barrier()
+            torch.cuda.synchronize()
+            t_ng = time.perf_counter()
+            ng_loss, ng_bpb, ng_coverage = eval_val_sliding_hashed_ngram(
+                args,
+                base_model,
+                rank,
+                world_size,
+                device,
+                val_tokens,
+                base_bytes_lut,
+                has_leading_space_lut,
+                is_boundary_token_lut,
+                stride=args.eval_stride,
+                order=args.ngram_eval_order,
+                alpha=args.ngram_eval_alpha,
+                min_count=args.ngram_eval_min_count,
+                buckets=args.ngram_eval_buckets,
+                max_seconds=args.ngram_eval_max_seconds,
+                eval_seq_len=sw_seq_len,
+            )
+            if rank == 0:
+                torch.cuda.synchronize()
+                ng_eval_ms = 1000.0 * (time.perf_counter() - t_ng)
+                if ng_coverage >= 0.999999:
+                    log0(
+                        f"final_sliding_window_ngram{args.ngram_eval_order} val_loss:{ng_loss:.4f} "
+                        f"val_bpb:{ng_bpb:.4f} eval_time:{ng_eval_ms:.0f}ms"
+                    )
+                    log0(
+                        f"final_sliding_window_ngram{args.ngram_eval_order}_exact "
+                        f"val_loss:{ng_loss:.8f} val_bpb:{ng_bpb:.8f}"
+                    )
+                else:
+                    log0(
+                        f"final_sliding_window_ngram{args.ngram_eval_order}_partial val_loss:{ng_loss:.4f} "
+                        f"val_bpb:{ng_bpb:.4f} coverage:{ng_coverage:.4f} eval_time:{ng_eval_ms:.0f}ms"
+                    )
+                    log0(
+                        f"final_sliding_window_ngram{args.ngram_eval_order}_partial_exact "
+                        f"val_loss:{ng_loss:.8f} val_bpb:{ng_bpb:.8f} coverage:{ng_coverage:.8f}"
+                    )
+            if distributed:
+                dist.barrier()
+    if distributed:
+        dist.destroy_process_group()
+if __name__ == "__main__":
+    main()
