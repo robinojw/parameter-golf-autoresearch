@@ -99,7 +99,11 @@ def run_remote_training(
         f"python3 {_wd}/download_data.py $_dp 32 240 || true; "
         f"fi; "
         f"export DATA_PATH=$_dp; "
-        f"echo \"DATA_PATH=$DATA_PATH (train shards: $(ls $DATA_PATH/fineweb_train_*.bin 2>/dev/null | wc -l))\"; "
+        f"_nshards=$(ls $DATA_PATH/fineweb_train_*.bin 2>/dev/null | wc -l); "
+        f"echo \"DATA_PATH=$DATA_PATH (train shards: $_nshards)\"; "
+        f"if [ $_nshards -ge 4 ]; then export LOADER_MODE=coprime; "
+        f"else export LOADER_MODE=sequential; fi; "
+        f"echo \"LOADER_MODE=$LOADER_MODE\"; "
     )
     train_cmd = (
         f"cd {_wd} && "
