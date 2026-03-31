@@ -67,6 +67,7 @@ MUON_MOMENTUM_END = float(os.getenv("MUON_MOMENTUM_END", "0.99"))
 MUON_WARMUP = int(os.getenv("MUON_WARMUP", "500"))
 MUON_WD = float(os.getenv("MUON_WD", "0.04"))
 MUON_NS_STEPS = int(os.getenv("MUON_NS_STEPS", "5"))
+MUON_EQ = bool(int(os.getenv("MUON_EQ", "1")))  # MuonEq RC equilibration (arxiv:2603.28254)
 EMA_DECAY = float(os.getenv("EMA_DECAY", "0.995"))
 EMA_START = int(os.getenv("EMA_START", "100"))  # start EMA after step 100
 EMA_EVAL_EVERY = int(os.getenv("EMA_EVAL_EVERY", "50"))  # force eval EMA every N steps
@@ -660,18 +661,25 @@ MAX_VAL_TOKENS = int(os.getenv("MAX_VAL_TOKENS", "524288"))  # 512K tokens max f
 # ---------------------------------------------------------------------------
 
 def zeropower_via_ns(G: mx.array, steps: int = 5) -> mx.array:
-    """Standard Newton-Schulz 5-step orthogonalization (Muon optimizer).
+    """Newton-Schulz 5-step orthogonalization with optional MuonEq RC equilibration.
 
-    Uses cubic NS iteration: X_{k+1} = (15/8)X - (5/4)(XX^T)X + (3/8)(XX^T)^2 X
-    Converges to the polar factor of G. Used by Rascal (1.1099 bpb, PR #1120).
-    Turbo-Muon (AOL + Polar Express) was removed: +0.0018 BPB worse at H100 scale
-    and exceeds 16MB artifact budget (PR #1105 negative result).
+    MuonEq (arxiv:2603.28254): O(m+n) per-row/column normalization before NS5
+    improves spectral conditioning of the momentum matrix, enabling better
+    orthogonalization convergence. Controlled by MUON_EQ env var.
     """
     norm = mx.sqrt(mx.sum(G * G)) + 1e-7
     X = G / norm
     transposed = X.shape[0] > X.shape[1]
     if transposed:
         X = X.T
+    if MUON_EQ:
+        # RC equilibration: normalize rows then columns (arxiv:2603.28254)
+        row_norms = mx.sqrt(mx.sum(X * X, axis=1, keepdims=True)) + 1e-8
+        X = X / row_norms
+        col_norms = mx.sqrt(mx.sum(X * X, axis=0, keepdims=True)) + 1e-8
+        X = X / col_norms
+        # Renormalize to unit Frobenius norm for NS convergence
+        X = X / (mx.sqrt(mx.sum(X * X)) + 1e-7)
     for _ in range(steps):
         A = X @ X.T
         X = 15.0 / 8.0 * X - 5.0 / 4.0 * (A @ X) + 3.0 / 8.0 * (A @ (A @ X))
