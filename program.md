@@ -42,7 +42,7 @@ You do NOT interact with RunPod directly. Tag a result `PROMOTE` to queue it.
 
 ## Metric
 `val_bpb` (bits per byte) on FineWeb. Lower is better.
-**Merged SOTA: 1.1147 bpb (PR #1019). Best unmerged: 1.1088 (PR #1105, MLP 3.5×+fused kernels+mixed int5/6+SLOT, under review). Second unmerged: 1.1091 (PR #1089). Baseline: 1.2244 bpb.**
+**Merged SOTA: 1.1147 bpb (PR #1019). Best unmerged: 1.0781 (PR #672, 30-epoch cosine TTT on PR #518 stack, SINGLE CHANGE). Second unmerged: 1.0806 (PR #1143, Scylla+TTT). Baseline: 1.2244 bpb.**
 Track both val_bpb AND artifact_bytes in results.tsv.
 
 ## Proven Techniques (do not re-implement)
@@ -69,6 +69,13 @@ Already on the leaderboard — build on these, don't repeat them:
   Formula: A=X@X.T, B=b*A+c*(A@A), X=a*X+B@X. Config: LR=0.025, momentum=0.99, WD=0.04
 
 **Promising and implementation details available:**
+- **30-epoch cosine TTT (CRITICAL — PR #672, NEW UNMERGED BEST 1.0781 bpb, -0.041 vs merged SOTA):**
+  Single change from PR #518 stack: TTT_EPOCHS=30 with cosine schedule.
+  3-seed: 1.0743/1.0774/1.0825 (mean=1.0781, std=0.0041), 15.62 MB. All within budget.
+  Timing: Training=600s, TTT=494s, Sliding eval=96s → Total eval=590s (valid, under 10 min).
+  Base stack: 11L LeakyReLU(0.5)^2, d=512, 4 KV GQA, MLP 3x, BigramHash(2048), SmearGate,
+    XSA4, Partial RoPE, LN Scale, EMA, SWA, Late QAT, OrthoInit, VE128, Int6+zstd-22.
+  HIGHEST PRIORITY: implement on our stack immediately.
 - Legal Score-First TTT — eval-time -0.010 to -0.018 bpb, in 4+ entries
   Config: TTT_LR=0.002, TTT_EPOCHS=3, TTT_CHUNK_TOKENS=32768, TTT_FREEZE_BLOCKS=2
 - **Muon Legal TTT** (NEW - PR #1148, aamodbhatt, 1.1179): NS orthogonalized updates in TTT loop
@@ -78,6 +85,10 @@ Already on the leaderboard — build on these, don't repeat them:
 - SLOT (Stochastic Logit Overlay at Test-time) — -0.0008 bpb, free eval-time gain
   Config: SLOT_LR=0.003, SLOT_STEPS=5 (PR #1150 confirmed)
 - ResidLambdas — resid_lambda(init=1.0) + x0_lambda(init=0.1) per layer, best non-TTT at 1.1140
+- **MuonEq (NEW — arxiv:2603.28254v1)**: Lightweight O(m+n) row/column equilibration BEFORE Newton-Schulz orthogonalization.
+  Three variants: RC (two-sided), R (row-only), C (column-only). Rebalances momentum matrix before NS step.
+  No new hyperparameters. Novel direction not yet on leaderboard. ~5 lines in Muon optimizer.
+  Potential: improved spectral conditioning → better convergence → lower bpb.
 - NorMuon — Polar Express + Adafactor-style variance reduction + cautious WD (modded-nanogpt SOTA)
 - MLP tuning: LeakyReLU(0.5)^2 with 3x expansion (MLP_MULT=3.0), value embed VE_ENABLED=1, VE_DIM=128, VE_LAYERS='9,10'
 - **MLP 3.5× expansion** (NEW - PR #1105): mechanistic analysis of PR #1019 showed MLP at 94.4% SVD rank utilization (fully packed) vs attention Q at 72.6%. Model was parameter-starved in MLP. MLP 3.5× with mixed int5/int6 quantization enables this without exceeding 16MB budget. Contribution: +0.0037 BPB vs 3× MLP. Combined with Brotli-11 and SLOT → 1.1088 BPB (best unmerged).
@@ -132,6 +143,26 @@ Already on the leaderboard — build on these, don't repeat them:
 
 ## Strategy
 <!-- STRATEGY_START -->
+## 2026-03-31 (Cycle 19 Reflection — NS5 Muon + ResidLambdas experiments)
+
+**NS5 Muon baseline established (commit 3c22252):** Switched from Turbo-Muon to standard cubic NS5 (a=15/8, b=-5/4, c=3/8). Fixed LEAKY_SLOPE default 0.3→0.75. Local baseline: 9.474 bpb (vs 9.354 Turbo-Muon). Expected regression at 500 steps — Turbo-Muon has early convergence advantage that disappears at 7000+ H100 steps. NS5 is correct for H100.
+
+**ResidLambdas NEGATIVE locally (discarded):** x0_lambda init=0.1 added 0.031 bpb regression at 500 steps. Scale-dependent: PR #1130 gains appear at 7000+ step H100 runs. attn_scale/mlp_scale (init=1.0) already implement the resid_lambda part; x0 injection needs many steps to learn. Note for H100: consider adding with init=0.05 after GPTQ is implemented.
+
+**LOCAL EXPERIMENTS HITTING LIMITS:** With NS5 Muon (slower convergence) and only 500 steps, most techniques need H100 scale to show directional signal. Continuing local experiments may give misleading results.
+
+**Current local script status:** XSA-all, EngramLite, coprime-stride, NS5 Muon (correct), LEAKY_SLOPE=0.75 (correct), MLP 3.5× (MLP_MULT=3.5 default), WARMDOWN_ITERS param. This is the Rascal-equivalent stack but with EngramLite instead of BigramHash.
+
+**Priority stack (Cycle 19):**
+1. **IMPLEMENT GPTQ in train_gpt.py** — H100 only, can't test locally. This unblocks Tier 2 submission.
+2. **Prepare H100 submission** — current NS5+EngramLite+coprime stack should reach ~1.1099 without GPTQ
+3. **ResidLambdas for H100** — add as additive x0 injection (init=0.05) to the Tier 2 run
+4. **NorMuon** — queued for research (implementation details needed)
+5. **Watch PR #1143, #1159** — legality decisions
+
+**What we have ready for H100:** NS5 Muon, XSA-all, EngramLite, coprime-stride, LEAKY_SLOPE=0.75, MLP 3.5×. Need: train_gpt.py parity, GPTQ implementation.
+
+---
 ## 2026-03-31 18:00 UTC (Cycle 18 Reflection — Post Deep Dive)
 
 **Key updates since Cycle 14:**
