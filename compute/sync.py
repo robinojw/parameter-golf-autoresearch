@@ -83,8 +83,8 @@ def run_remote_training(
     if env_vars:
         extra_env = " ".join(f"{k}={shlex.quote(str(v))}" for k, v in env_vars.items()) + " "
     # Use pod's pre-installed full dataset (195 shards / 19.5B tokens) if available.
-    # Check shard 000001 (not 000000 which we also push) to confirm it's the full dataset.
-    # Tries multiple paths; falls back to the 1-shard data we pushed.
+    # Check shard 000001 (not 000000 which we also push) to confirm full dataset.
+    # If not found, download up to 32 shards from HuggingFace (2-4 min).
     _data_detect = (
         f"_dp={_wd}/data/datasets/fineweb10B_sp1024; "
         f"for _try in "
@@ -94,6 +94,10 @@ def run_remote_training(
         f"/opt/datasets/fineweb10B_sp1024; do "
         f"if ls $_try/fineweb_train_000001.bin 2>/dev/null; then _dp=$_try; break; fi; "
         f"done; "
+        f"if [ \"$_dp\" = \"{_wd}/data/datasets/fineweb10B_sp1024\" ]; then "
+        f"echo 'Full dataset not pre-installed, downloading 32 shards from HuggingFace...'; "
+        f"python3 {_wd}/download_data.py $_dp 32 240 || true; "
+        f"fi; "
         f"export DATA_PATH=$_dp; "
         f"echo \"DATA_PATH=$DATA_PATH (train shards: $(ls $DATA_PATH/fineweb_train_*.bin 2>/dev/null | wc -l))\"; "
     )

@@ -328,7 +328,7 @@ def _handle_promotion(request: dict) -> None:
     pod_id = client.launch_pod()
     try:
         ssh = client.wait_for_ready(pod_id)
-        sync.push_to_pod(ssh, ["train_gpt.py", "data"])
+        sync.push_to_pod(ssh, ["train_gpt.py", "download_data.py", "data"])
         t0 = time.time()
         # Forward experiment-relevant env vars from caller's environment to the pod
         _FORWARDED_ENV_KEYS = [
