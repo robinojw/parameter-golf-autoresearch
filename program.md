@@ -42,7 +42,7 @@ You do NOT interact with RunPod directly. Tag a result `PROMOTE` to queue it.
 
 ## Metric
 `val_bpb` (bits per byte) on FineWeb. Lower is better.
-**SOTA: 1.1091 bpb. Baseline: 1.2244 bpb.**
+**Merged SOTA: 1.1147 bpb (PR #1019). Best unmerged: 1.1091 (PR #1089, under review). Baseline: 1.2244 bpb.**
 Track both val_bpb AND artifact_bytes in results.tsv.
 
 ## Proven Techniques (do not re-implement)
@@ -82,8 +82,13 @@ Already on the leaderboard — build on these, don't repeat them:
 - Mixed-precision GPTQ — base int5 + Hessian-sensitivity greedy promotion to int6/int7.
   Self-generated calibration data. 2% prune headroom.
 
+**Hyperparameter tuning wins (low-risk, high-value):**
+- WARMDOWN_ITERS=4000 (vs default lower value) — PR #1145 base model achieves 1.1137 bpb, confirmed win
+- SLOT hyperparameters: lr=0.003, steps=5 (PR #1150 confirmation)
+
 **Experimental (no competitor validation):**
 - Multi-token prediction as auxiliary loss (k=2) — ICLR 2026, no competitor has tried
+- EGGROLL (post-GPTQ antithetic ternary bin search, 60s eval budget): 6-14 improvements/seed (PR #1156)
 - Megakernels: custom triton for dominant matmuls (validated in PRs #1105, #1135)
 
 **Exhausted (negative results — do not implement):**
@@ -95,45 +100,53 @@ Already on the leaderboard — build on these, don't repeat them:
 
 ## Strategy
 <!-- STRATEGY_START -->
-## 2026-03-30 20:30Z: Refined Strategy — Implementation Gap Analysis
+## 2026-03-31: Leaderboard Update — SOTA Correction + New PRs
 
-### Competitive Landscape
-SOTA: 1.1091 bpb (PR #1089). Leaderboard stable — two new PRs (#1140, #1141) far below SOTA.
-Top 7 span 1.1091-1.1194 (0.0103 bpb range). Field converging on shared technique stack.
+### Competitive Landscape (CORRECTED)
+**Merged SOTA: 1.1147 bpb** (PR #1019, AR Self-Gen GPTQ + XSA, merged 2026-03-25).
+**Best unmerged PR: 1.1091** (PR #1089, Turbo-Muon+EngramLite+ParamBanking — still open/under review).
+**Potential record (novel tokenizer): 1.0806** (PR #1143, Scylla — still open).
 
-### Critical Implementation Gaps (our MLX vs SOTA)
-| Gap | Priority | Expected Impact | Status |
-|-----|----------|----------------|--------|
-| Muon optimizer (NS5) | P0 | +0.01-0.02 bpb vs AdamW | **FEASIBLE on MLX** (52ms/step bf16, benchmarked) |
-| Coprime data loader | P1 | Free diversity win | Implementation extracted from #1120 |
-| GPTQ quantization | P1 (submission) | Required for 16MB artifact | Not needed for MLX directional testing |
-| ResidLambdas | P2 | Best non-TTT at 1.1140 | Implementation extracted from #1130 |
-| MiLe loss | P2 | Focuses on hard tokens | ~10 lines, constant gamma=0.75 |
-| Legal TTT | P2 (eval-time) | -0.002 to -0.003 bpb | Implementation extracted from #1130 |
-| Hyperparameter fixes | P1 | Multiple small gains | See below |
+New competitive PRs since last check:
+- **PR #1145 (AnirudhRahul, 1.1109)**: Full GPTQ + XSA11 + WARMDOWN_ITERS=4000 + online causal ngram ensemble. Base model = 1.1137. WARMDOWN_ITERS=4000 is a key tuning win.
+- **PR #1147 (analytical)**: Warning that unnormalized eval-time n-gram caches inflate BPB. Does NOT affect BigramHash/EngramLite (training-time architecture).
+- **PR #1156 (EGGROLL v2, 1.1161)**: Post-GPTQ antithetic ternary bin search (60s eval budget). 6-14 bin improvements per seed.
+- **PR #1150 (1.1115)**: SLOT lr=0.003 steps=5 confirmed effective.
 
-### Hyperparameter Corrections Needed
-- QK_GAIN: 1.5 -> 4.0 (PR #1125 ablation proves this)
-- VE layers: "9,10" -> "5,9,10", dim 128 -> 196
-- LEAKY_SLOPE: 0.5 -> 0.3 (matches SOTA #1089)
-- LR: 3e-4 (AdamW) -> 0.025 (Muon) when Muon is implemented
+### Implementation Details Now Available
 
-### Recommended Experiment Sequence
-**Experiment 1: Muon optimizer** — Single largest gap. Port NS5 to MLX (all ops verified).
-Apply to all 2D weight matrices, keep AdamW for embeddings/scalars.
-Hyperparams: lr=0.025, momentum=0.85->0.99 warmup, wd=0.04, nesterov=True, ns_steps=5.
+**Polar Express (Turbo-Muon core) — TWO VARIANTS:**
 
-**Experiment 2: Hyperparameter corrections** — QK_GAIN=4.0, LEAKY_SLOPE=0.3, VE expansion.
-Can run alongside or after Muon to measure combined effect.
+*PR #1089 SOTA (recommended for competition):*
+- 7 coefficient triplets, with AOL preconditioning (Gershgorin scaling) that replaces iter 1
+- AOL step: s = 1/(A.abs().sum(dim=1).sqrt() + eps), then X = s*X, A = s*A*s
+- Uses iters 2-7 coefficients, but only runs 4 NS iterations total:
+  ```
+  (4.107, -2.948, 0.545), (3.949, -2.909, 0.552),
+  (3.318, -2.488, 0.510), (2.301, -1.669, 0.419)
+  ```
+- Post-NS: row-then-column normalization in fp32
+- Muon config: LR=0.025, momentum=0.99 (warmup 0.92->0.99 over 1500 steps), WD=0.04
 
-**Experiment 3: MiLe loss** — ~10 lines of code. Constant gamma=0.75, clamp_min=0.2.
-Entropy-weighted loss focuses training on hard tokens.
+*modded-nanogpt (reference, slightly different coefficients):*
+- 5-iter, no AOL preconditioning, standard Frobenius norm init
+- Coefficients: [(8.157,-22.483,15.879), (4.043,-2.809,0.500), ...]
+- Config: LR=0.023, momentum=0.95, beta2=0.9, WD=1.2
 
-**Experiment 4: ResidLambdas** — Per-layer learned scaling: x = resid_lambda*block(x) + x0_lambda*x0.
-Init: resid_lambda=1.0, x0_lambda=0.1. Best non-TTT result (1.1140).
+Both variants significantly outperform fixed-coefficient NS(5). PR #1089 variant is faster (4 iters + AOL).
+CANS (ICLR 2026) confirms: at 4 iters, adapted coefficients clearly beat standard NS.
 
-**Experiment 5: Coprime loader** — Deterministic coprime walks across data shards.
-Pure systems optimization, zero architecture risk.
+**NorMuon (full optimizer from modded-nanogpt SOTA):**
+- Polar Express + low-rank variance reduction (Adafactor-style)
+- Cautious weight decay (gated), mantissa tracking for precision
+- Config: muon_lr=0.023, momentum=0.95, beta2=0.9, wd=1.2, adam_lr=0.008
+- Per-matrix LR: c_proj gets 2x learning rate
+
+**ResidLambdas (from PR #1135, 1.1140 no-TTT SOTA):**
+- `resid_lambda` (init=1.0) and `x0_lambda` (init=0.1) per layer
+- Forward: x = resid_lambda[i] * block(x) + x0_lambda[i] * x0
+- MLP: LeakyReLU(0.75)^2 with 3x expansion (NOT 0.5 or 0.3)
+- Value embeddings: input-dependent gate = 2*sigmoid(ve_gate(x[:,:32])) per KV head
 
 ### Exhausted Directions (do not pursue)
 - JEPA: 14 ablations proved negative at 27M/600s (PR #1124)
@@ -141,25 +154,80 @@ Pure systems optimization, zero architecture risk.
 - Mamba/SSM hybrids: 1.5633 bpb (PR #1107), quantization kills recurrence
 - Knowledge distillation: 1.1553 bpb (PR #1029), 600s too tight
 
-### Open Questions
-1. Does Muon on MLX close the AdamW gap? (Expected yes — EVERY top-7 entry uses Muon)
-2. Does XSA-all + Muon + Coprime Loader alone match Rascal (1.1099)?
-3. Can we combine ResidLambdas (no-TTT path) with TTT for additive gains?
-4. Does NorMuon (with Adafactor variance reduction) help at 27M scale?
-5. Can MTP auxiliary loss (k=2) improve bpb within 600s budget?
-6. Is there an MLX-specific optimization for the NS5 inner loop (e.g., fused kernel)?
+### Recommended Priority Stack (updated with implementation details)
+**Phase 1 (Optimizer — highest impact/effort ratio):**
+- Implement Polar Express in train_gpt.py (replacing old NS)
+- Use 5-iter coefficients from modded-nanogpt initially
+- Test with 4 iters (first 4 coefficients) to save ~20% optimizer time
+
+**Phase 2 (Architecture — already partially implemented in MLX):**
+- XSA-all: already in train_gpt_mlx.py, verify in train_gpt.py
+- EngramLite: already in train_gpt_mlx.py, port to train_gpt.py
+- Coprime-stride loader: pure data loading change, no architecture risk
+- ResidLambdas: add per-layer resid_lambda + x0_lambda
+
+**Phase 3 (Quantization — post-training):**
+- Full Hessian GPTQ with Cholesky + activation ordering
+- Self-generated calibration data (no val data access — rules-compliant)
+- Test Brotli vs zstd-22 for compression
+
+**Phase 4 (Eval-time — orthogonal gains):**
+- Legal Score-First TTT: unfreeze last 2 blocks, 3 epochs AdamW
+- SLOT: stochastic logit perturbation, -0.0008 bpb
+
+**Phase 5 (Experimental — if time permits):**
+- Multi-token prediction as auxiliary loss (k=2, no competitor has tried)
+- ParamBanking (still need implementation details from PR #1089)
+- Triton fused MLP kernels (H100-only, medium complexity)
+
+### Constraint Notes
+- Constraint calculator assumes 0.9 compression ratio — too conservative
+- Real entries achieve ~0.83 with zstd-22 on quantized weights
+- 27M params at int6 with 0.83 compression = ~14.8MB (feasible)
+- GPTQ tighter quantization may improve compressibility further
+
+### Working Hypothesis (updated)
+The gap from our current baseline to SOTA is primarily:
+1. **Optimizer**: Our train_gpt.py uses old NS(5,fixed) — switching to Polar Express is ~free bpb
+2. **Architecture**: MLX script has SOTA architecture, train_gpt.py needs porting
+3. **Quantization**: GPTQ > Int6 QAT by a meaningful margin
+4. **Eval-time**: TTT + SLOT add ~0.003 bpb of orthogonal gains
+
+Matching Rascal (1.1099) seems achievable with proper Polar Express + architecture port.
+Beating SOTA (1.1091) likely requires all 4 phases plus careful hyperparameter tuning.
+
+### ParamBanking (CORRECTED — not weight sharing, but batched optimization)
+- Stack all layers' weights of same type into 3D bank tensors
+- qo_bank: (22, 512, 512), kv_bank: (22, 256, 512), mlp_up: (11, 1792, 512), mlp_down: (11, 512, 1792)
+- NS operates on entire bank at once with bmm — much faster than per-layer
+- Forward uses `F.linear(x, bank[layer_idx])` instead of nn.Linear modules
+- Banks un-banked for GPTQ (per-layer quantization), re-banked after
+
+### Mixed-Precision GPTQ (from PR #1089)
+- Base int5 (NOT int6), with Hessian-sensitivity greedy promotion
+- Top group promoted to int7, rest to int6 until 16MB budget fits
+- Self-generated calibration data (no val data access)
+- 2% prune headroom reserved
+
+### Open Questions (updated)
+1. ~~What are the Polar Express coefficients?~~ ANSWERED — have both PR #1089 and modded-nanogpt variants
+2. ~~What is ResidLambdas implementation?~~ ANSWERED — have exact code from PR #1135
+3. ~~What is ParamBanking?~~ ANSWERED — batched optimization of stacked weight banks
+4. ~~What is GPTQ mixed-precision?~~ ANSWERED — base int5 with Hessian-sensitivity promotion
+5. Does NorMuon variance reduction help at 27M scale? (modded-nanogpt uses it, PR #1089 doesn't)
+6. Can MTP auxiliary loss improve bpb within 600s budget?
+7. Is ResidLambdas compatible with ParamBanking? (both modify residual stream)
 <!-- STRATEGY_END -->
 
 ## Technique Map
 <!-- TECHNIQUE_MAP_START -->
-- [convergent] xsa_all (bpb 1.1091) — IMPLEMENTED in MLX
-- [sota_component] turbo_muon (bpb 1.1091) — Polar Express w/ AOL, 4 iters, coefficients known
-- [promising] normuon — Polar Express + Adafactor variance reduction (modded-nanogpt)
+- [convergent] xsa_all (bpb 1.1091)
+- [sota_component] turbo_muon (bpb 1.1091)
 - [proven] parallel_muon_+_adamw (bpb 1.1099)
-- [sota_component] engramlite (bpb 1.1091) — IMPLEMENTED in MLX
+- [sota_component] engramlite (bpb 1.1091)
 - [proven] bigramhash (bpb 1.1099)
 - [convergent] coprime_loader (bpb 1.1099)
-- [convergent] full_hessian_gptq (bpb 1.1116) — mixed-precision: base int5, promote int6/int7
+- [convergent] full_hessian_gptq (bpb 1.1116)
 - [proven_but_superseded] int6_qat (bpb 1.1099)
 - [proven] zstd_22
 - [proven] ema
@@ -171,16 +239,17 @@ Pure systems optimization, zero architecture risk.
 - [proven] ternary_quantization
 - [convergent] legal_ttt (bpb 1.1154)
 - [promising] slot (bpb 1.1154)
-- [promising] resid_lambdas (bpb 1.114) — resid_lambda=1.0, x0_lambda=0.1 per layer
-- [sota_component] param_banking (bpb 1.1091) — batched NS on 3D weight banks, NOT weight sharing
+- [promising] resid_lambdas (bpb 1.114)
+- [sota_component] param_banking (bpb 1.1091)
 - [convergent] triton_fused_mlp (bpb 1.1116)
 - [proven] value_residual (bpb 1.1187)
 - [marginal] brotli (bpb 1.1138)
-- [experimental] mtp_auxiliary — multi-token prediction aux loss, untested in competition
 - [exhausted] depth_recurrence
 - [exhausted] mamba_ssm (bpb 1.5633)
 - [exhausted] jepa
 - [exhausted] knowledge_distillation (bpb 1.1553)
+- [promising] normuon
+- [experimental] mtp_auxiliary
 <!-- TECHNIQUE_MAP_END -->
 
 ## Research Context
@@ -225,16 +294,26 @@ Pure systems optimization, zero architecture risk.
 
 ## Experiment History
 <!-- EXPERIMENTS_START -->
-[No experiments recorded yet]
+| commit | tier | val_bpb | iters | description |
+|--------|------|---------|-------|-------------|
+| e1da8bf | local | 10.007 | 200 | Baseline: AdamW 3e-4, XSA-all, EngramLite. Loss stuck (too few tokens). |
+| b8be789 | local | 9.623 | 200 | Muon NS5 (lr=0.025) + QK_GAIN=4.0 + LEAKY_SLOPE=0.3. Clear Muon win (-0.384). |
+| 177e31e | local | 9.366 | 500 | Turbo-Muon (Polar Express 4-iter + AOL preconditioning). -0.257 vs NS5. Run: 1233s (too slow). |
+
+**Current status:** EMA eval deferred to every 50 steps (a746ad2). Next: ResidLambdas.
+**Note:** 9.x bpb expected at 200-500 local iters (1-4M tokens). SOTA needs ~5000+ steps at 16M+ tokens.
 <!-- EXPERIMENTS_END -->
 
 ## Competitor Scores
 <!-- COMPETITORS_START -->
-| PR # | Author | Technique | val_bpb | Δ baseline |
-|------|--------|-----------|---------|------------|
-| #1089 | mikeapedia | Submission: Turbo-Muon + EngramLite + ParamBanking + XSA (11L 512d) | 1.1091 | -0.1153 |
+| PR # | Author | Technique | val_bpb | Δ baseline | Status |
+|------|--------|-----------|---------|------------|--------|
+| #1019 | abaybektursun | AR Self-Gen GPTQ + XSA-all + BigramHash 3072×112 | 1.1147 | -0.1097 | **MERGED SOTA** |
+| #1089 | mikeapedia | Turbo-Muon + EngramLite + ParamBanking + XSA (11L 512d) | 1.1091 | -0.1153 | OPEN (unmerged) |
+| #1145 | AnirudhRahul | Full GPTQ + XSA11 + WARMDOWN_ITERS=4000 + online causal ngram ensemble | 1.1109 | -0.1135 | OPEN |
 | #1120 |  | Rascal: XSA-all + Parallel Muon + Coprime Loader + BigramHash(2048) + naive int6+zstd | 1.1099 | -0.1145 |
 | #1135 |  | Fused Triton MLP + Full GPTQ + Coprime Loader + XSA-all + BH2816 | 1.1116 | -0.1128 |
+| #1105 | abaybektursun | Fused MLP (Triton+CUTLASS EVT) + MLP 3.5× + Mixed int5/int6 + Brotli — (seed 314, more seeds running) | 1.1123 | -0.1121 |
 | #1105 | abaybektursun | Fused MLP (Triton+CUTLASS EVT) + Brotli + Memmap | 1.1138 | -0.1106 |
 | #1130 | Gusanidas | ResidLambdas + Split-LR + Train-Budget GPTQ + Coprime Loader (12-seed mean) | 1.1140 | -0.1104 |
 | #1122 | mikeapedia | EngramLite + Gated Skips + Full GPTQ + FA3 | 1.1146 | -0.1098 |
@@ -244,9 +323,8 @@ Pure systems optimization, zero architecture risk.
 | #1084 | AnubhavBharadwaaj | SLOT Eval-Time Augmentation on PR #549 SOTA Stack val_bpb = 1.1185 (3-seed mean, std 0.0003) | ~15.9 MB | 8×H100 SXM | 1.1185 | -0.1059 |
 | #1118 | adityakm24 | 11L XSA4 + TrigramHash + ValueResidual + Legal TTT | 1.1187 | -0.1057 |
 | #1124 | NewyorkDev | v9 Batched Muon + Full GPTQ Random Calib + JEPA Research | 1.1194 | -0.1050 |
+| #768 | mradassaad | Shared ValueEmbedding (tok_emb reuse, layers 5-10) + Legal TTT | 1.1201 | -0.1043 |
 | #1042 | nothingLiva | Adaptive Precision Embedding Quantization (4-seed mean val_bpb=1.1217) | 1.1217 | -0.1027 |
-| #1086 | Omrigotlieb | Track A: 11L U-Net + BigramHash + SmearGate + Partial RoPE + QAT () | 1.1349 | -0.0895 |
-| #1029 | fielding | Knowledge Distillation — A Negative | 1.1553 | -0.0691 |
 <!-- COMPETITORS_END -->
 
 ## Verified Research (deep-analyzed)
