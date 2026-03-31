@@ -73,11 +73,15 @@ def run_remote_training(
     vocab_size: int = _DEFAULT_VOCAB_SIZE,
     nproc: int = _DEFAULT_NPROC,
     timeout_seconds: int = _DEFAULT_TIMEOUT,
+    env_vars: dict[str, str] | None = None,
 ) -> int:
     user_host, _host, port = _parse_ssh_conn(ssh_conn)
     # After training, copy artifacts to home (~/) so pull_from_pod can find them via relative paths.
     # run.log, logs/, final_model.int6.zst, and final_model.pt are written to /workspace by torchrun.
     _wd = _DEFAULT_REMOTE_DIR.rstrip("/")
+    extra_env = ""
+    if env_vars:
+        extra_env = " ".join(f"{k}={shlex.quote(str(v))}" for k, v in env_vars.items()) + " "
     train_cmd = (
         f"cd {_wd} && "
         f"_copy_artifacts() {{ "
@@ -88,7 +92,7 @@ def run_remote_training(
         f"}}; "
         f"trap _copy_artifacts EXIT; "
         f"pip install -q zstandard 2>/dev/null; "
-        f"RUN_ID={shlex.quote(run_id)} "
+        f"{extra_env}RUN_ID={shlex.quote(run_id)} "
         f"torchrun --standalone --nproc_per_node={nproc} train_gpt.py"
     )
     cmd = _build_ssh_cmd(port, user_host, train_cmd)

@@ -330,7 +330,14 @@ def _handle_promotion(request: dict) -> None:
         ssh = client.wait_for_ready(pod_id)
         sync.push_to_pod(ssh, ["train_gpt.py", "data"])
         t0 = time.time()
-        exit_code = sync.run_remote_training(ssh, run_id=run_id)
+        # Forward experiment-relevant env vars from caller's environment to the pod
+        _FORWARDED_ENV_KEYS = [
+            "TTT_ENABLED", "TTT_EPOCHS", "TTT_LR", "TTT_CHUNK_TOKENS",
+            "TTT_FREEZE_BLOCKS", "TTT_BATCH_SIZE", "MUON_EQ",
+            "WARMDOWN_ITERS", "LEAKY_SLOPE",
+        ]
+        forwarded_env = {k: os.environ[k] for k in _FORWARDED_ENV_KEYS if k in os.environ}
+        exit_code = sync.run_remote_training(ssh, run_id=run_id, env_vars=forwarded_env or None)
         duration = time.time() - t0
         sync.pull_from_pod(ssh, [f"logs/{run_id}.txt", "run.log"], local_dir=str(run_dir), optional=True)
         if exit_code == 0:
