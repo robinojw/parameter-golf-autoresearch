@@ -330,19 +330,21 @@ class RunPodClient:
             "cp /workspace/repo/train_gpt.py /workspace/train_gpt.py\n"
             "cp -r /workspace/repo/data /workspace/data 2>/dev/null || true\n"
             "\n"
-            "_dp=/workspace/parameter-golf-autoresearch/data/datasets/fineweb10B_sp1024\n"
+            "_dp=\n"
             "for _try in \\\n"
             "    /data/datasets/fineweb10B_sp1024 \\\n"
             "    /workspace/data/datasets/fineweb10B_sp1024 \\\n"
             "    /workspace/datasets/fineweb10B_sp1024 \\\n"
-            "    /opt/datasets/fineweb10B_sp1024; do\n"
+            "    /opt/datasets/fineweb10B_sp1024 \\\n"
+            "    /workspace/repo/data/datasets/fineweb10B_sp1024; do\n"
             '    if ls "$_try"/fineweb_train_000001.bin 2>/dev/null; then _dp=$_try; break; fi\n'
             "done\n"
             "\n"
-            'if [ "$_dp" = "/workspace/parameter-golf-autoresearch/data/datasets/fineweb10B_sp1024" ]; then\n'
+            'if [ -z "$_dp" ]; then\n'
             '    echo "Full dataset not pre-installed, downloading 32 shards from HuggingFace..."\n'
             "    cd /workspace/repo/data && python3 cached_challenge_fineweb.py --train-shards 32 || true\n"
             "    cd /workspace\n"
+            "    _dp=/workspace/repo/data/datasets/fineweb10B_sp1024\n"
             "fi\n"
             "\n"
             "export DATA_PATH=$_dp\n"
