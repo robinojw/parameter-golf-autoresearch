@@ -133,6 +133,7 @@ def get_batch_random(seq_len: int, batch_size: int, vocab_size: int):
 
 
 def load_val_tokens() -> mx.array | None:
+    """Load validation tokens for eval_mode evaluation only (no gradients)."""
     val_pattern = os.path.join(DATA_PATH, "fineweb_val_*.bin")
     val_files = sorted(glob.glob(val_pattern))
     if not val_files:
@@ -580,17 +581,36 @@ MAX_VAL_TOKENS = int(os.getenv("MAX_VAL_TOKENS", "524288"))  # 512K tokens max f
 # ---------------------------------------------------------------------------
 
 def zeropower_via_ns(G: mx.array, steps: int = 5) -> mx.array:
-    """Newton-Schulz 5-step orthogonalization. Coefficients from PR #1120."""
-    a, b, c = 3.4445, -4.7750, 2.0315
+    """Turbo-Muon: AOL preconditioning + Polar Express 4-iter NS.
+
+    Coefficients from PR #1089 SOTA (1.1091 bpb). `steps` param unused.
+    AOL (Gershgorin row-sum scaling) replaces the first NS iteration;
+    the 4 Polar Express steps follow with per-iteration (a,b,c) triplets.
+    """
+    POLAR_COEFFS = [
+        (4.107, -2.948, 0.545),
+        (3.949, -2.909, 0.552),
+        (3.318, -2.488, 0.510),
+        (2.301, -1.669, 0.419),
+    ]
+    eps = 1e-8
     norm = mx.sqrt(mx.sum(G * G)) + 1e-7
     X = G / norm
     transposed = X.shape[0] > X.shape[1]
     if transposed:
         X = X.T
-    for _ in range(steps):
+    # AOL preconditioning: scale rows by 1/sqrt(row abs-sum of A)
+    A = X @ X.T
+    s = 1.0 / (mx.sqrt(mx.sum(mx.abs(A), axis=1)) + eps)
+    X = s[:, None] * X
+    # 4 Polar Express NS iterations with per-step coefficients
+    for a, b, c in POLAR_COEFFS:
         A = X @ X.T
         B = b * A + c * (A @ A)
         X = a * X + B @ X
+    # Post-NS: row-then-column normalization
+    X = X / (mx.sqrt(mx.sum(X * X, axis=1, keepdims=True)) + eps)
+    X = X / (mx.sqrt(mx.sum(X * X, axis=0, keepdims=True)) + eps)
     if transposed:
         X = X.T
     return X
