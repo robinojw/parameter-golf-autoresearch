@@ -1,6 +1,7 @@
 from __future__ import annotations
 import copy
 import glob
+import io
 import math
 import os
 import random
@@ -27,6 +28,12 @@ try:
     from flash_attn_interface import flash_attn_func as flash_attn_3_func
 except ImportError:
     flash_attn_3_func = None
+try:
+    import zstandard as _zstd
+    _COMPRESSOR = "zstd"
+except ImportError:
+    import zlib as _zlib
+    _COMPRESSOR = "zlib"
 
 if os.environ.get("TORCHDYNAMO_SUPPRESS_ERRORS", "0") == "1":
     import torch._dynamo
@@ -126,6 +133,12 @@ class Hyperparameters:
     coprime_max_loaded_shards = int(os.environ.get("COPRIME_MAX_LOADED_SHARDS", 4))
     coprime_shards_per_batch = int(os.environ.get("COPRIME_SHARDS_PER_BATCH", 4))
     coprime_shard_hold_steps = int(os.environ.get("COPRIME_SHARD_HOLD_STEPS", 64))
+    # INT6 GPTQ post-training quantization
+    gptq_enabled = bool(int(os.environ.get("GPTQ_ENABLED", "1")))
+    gptq_calib_batches = int(os.environ.get("GPTQ_CALIB_BATCHES", 64))
+    gptq_block_size = int(os.environ.get("GPTQ_BLOCK_SIZE", 128))
+    gptq_clip_range = int(os.environ.get("GPTQ_CLIP_RANGE", 31))   # int6: [-31, 31]
+    gptq_reserve_ms = float(os.environ.get("GPTQ_RESERVE_MS", "10000"))  # ms reserved for GPTQ
 
 
 def maybe_compile(fn_or_module, *, enabled: bool, fullgraph: bool, mode: str = ""):
@@ -804,6 +817,7 @@ class CausalSelfAttention(nn.Module):
         self.value_residual = value_residual
         if value_residual:
             self.vrl_alpha = nn.Parameter(torch.zeros(1, dtype=torch.float32))  # sigmoid gate (PR #569 style)
+        self._calib_save_y = None  # set during GPTQ calibration to capture pre-O-proj attn output
     def _xsa_efficient(self, y: Tensor, v: Tensor) -> Tensor:
         """Efficient XSA: subtract self-value projection via GQA-aware reshape (no repeat_interleave).
         y: [B, T, H, D], v: [B, T, Hkv, D]. H must be divisible by Hkv."""
@@ -855,6 +869,8 @@ class CausalSelfAttention(nn.Module):
             gate = torch.sigmoid(self.attn_gate(x)).unsqueeze(-1)
             y = y * gate
         y = y.reshape(bsz, seqlen, dim)
+        if self._calib_save_y is not None:
+            self._calib_save_y(y.detach())
         return F.linear(y, out_w.to(x.dtype)), raw_v
 
 class SmearGate(nn.Module):
@@ -922,10 +938,13 @@ class MLP(nn.Module):
         super().__init__()
         # No CastedLinear -- weights come from banks
         self.kernel_mode = os.environ.get("MLP_KERNEL_MODE", "").strip().lower()
+        self._calib_save_act = None  # set during GPTQ calibration to capture pre-down-proj activation
     def forward(self, x: Tensor, up_w: Tensor, down_w: Tensor) -> Tensor:
-        x = F.linear(x, up_w.to(x.dtype))
-        x = leaky_relu_sq(x, kernel_mode=self.kernel_mode)
-        return F.linear(x, down_w.to(x.dtype))
+        h = F.linear(x, up_w.to(x.dtype))
+        h = leaky_relu_sq(h, kernel_mode=self.kernel_mode)
+        if self._calib_save_act is not None:
+            self._calib_save_act(h.detach())
+        return F.linear(h, down_w.to(x.dtype))
 
 class Block(nn.Module):
     def __init__(
@@ -1635,6 +1654,264 @@ def eval_val_sliding(
 
 
 
+# ==============================
+# INT6 GPTQ POST-TRAINING QUANTIZATION
+# ==============================
+
+def _compress(data: bytes) -> bytes:
+    if _COMPRESSOR == "zstd":
+        return _zstd.ZstdCompressor(level=22).compress(data)
+    return _zlib.compress(data, level=9)
+
+def _decompress(data: bytes) -> bytes:
+    if _COMPRESSOR == "zstd":
+        return _zstd.ZstdDecompressor().decompress(data, max_length=2 ** 33)
+    return _zlib.decompress(data)
+
+_GPTQ_KEEP_FLOAT_NUMEL = 65_536  # tensors <= this many elements are kept as float16
+
+def quantize_int6_per_row(t: Tensor, clip_range: int = 31) -> tuple[Tensor, Tensor]:
+    """Per-row INT6 quantization with 5-way clip sweep. Returns (q_int8, scale_fp16).
+    For 2D: scale is [rows], for 3D: scale is [slices, rows]. Vectors use scalar scale."""
+    t32 = t.float()
+    if t32.ndim >= 2:
+        tw = t32.reshape(-1, t32.shape[-1])  # [rows, cols]
+        best_q, best_s, best_err = None, None, float("inf")
+        for pct in [0.9990, 0.9995, 0.9999, 0.99999, 1.0]:
+            rc = torch.quantile(tw.abs(), pct, dim=1) if pct < 1.0 else tw.abs().amax(dim=1)
+            s = (rc / clip_range).clamp_min(1.0 / clip_range).to(torch.float16)
+            q = tw.div(s.float()[:, None]).round().clamp(-clip_range, clip_range).to(torch.int8)
+            err = (tw - q.float() * s.float()[:, None]).pow(2).mean().item()
+            if err < best_err:
+                best_q, best_s, best_err = q, s, err
+        return best_q.reshape(t32.shape).contiguous(), best_s.reshape(t32.shape[:-1]).contiguous()
+    amax = t32.abs().max().item()
+    scale = torch.tensor(amax / clip_range if amax > 0 else 1.0, dtype=torch.float16)
+    q = t32.div(scale.float()).round().clamp(-clip_range, clip_range).to(torch.int8)
+    return q.contiguous(), scale
+
+def _gptq_impl(W: Tensor, H: Tensor, clip_range: int, block_size: int) -> tuple[Tensor, Tensor]:
+    """Core GPTQ: column-by-column quantization with Hessian-based error propagation."""
+    n_out, n_in = W.shape
+    # Dead column + damping
+    H.diagonal().add_(0.01 * H.diag().mean().clamp_min(1e-8))
+    dead = H.diag() < 1e-10
+    H.diagonal()[dead] += 1.0
+    # Actorder: process columns in descending Hessian diagonal order
+    perm = H.diag().argsort(descending=True)
+    W = W[:, perm]
+    H = H[perm][:, perm]
+    # Pre-compute per-row scales from (permuted) weight range - 5-way sweep
+    _, s = quantize_int6_per_row(W.clone(), clip_range)  # s: [n_out] float16
+    s_f = s.float()
+    # Cholesky inverse of Hessian
+    L = torch.linalg.cholesky(H)
+    H_inv = torch.cholesky_inverse(L)
+    # GPTQ: quantize column by column, propagate error to remaining columns
+    W_q = torch.empty_like(W, dtype=torch.int8)
+    for j in range(n_in):
+        w_col = W[:, j]
+        q_col = w_col.div(s_f).round().clamp(-clip_range, clip_range).to(torch.int8)
+        W_q[:, j] = q_col
+        err = w_col - q_col.float() * s_f  # [n_out]
+        if j + 1 < n_in:
+            W[:, j + 1 :] -= err[:, None] * (H_inv[j, j + 1 :] / H_inv[j, j].clamp_min(1e-8))
+    # Un-permute columns back to original order
+    inv_perm = perm.argsort()
+    return W_q[:, inv_perm].contiguous(), s
+
+def quantize_int6_gptq(
+    weight: Tensor,
+    hessian: Tensor | None = None,
+    clip_range: int = 31,
+    block_size: int = 128,
+) -> tuple[Tensor, Tensor]:
+    """Full Hessian GPTQ for a 2D weight matrix. Falls back to per-row on failure."""
+    if hessian is None or weight.ndim != 2:
+        return quantize_int6_per_row(weight, clip_range)
+    try:
+        return _gptq_impl(weight.float().clone(), hessian.float().clone(), clip_range, block_size)
+    except Exception:
+        return quantize_int6_per_row(weight, clip_range)
+
+def _collect_hessians(
+    model: nn.Module,
+    get_batch_fn,
+    n_batches: int,
+    device: torch.device,
+) -> dict[str, Tensor]:
+    """Accumulate calibration Hessians (X^T X) for each weight type.
+    Returns dict: h_attn_in, h_attn_out, h_mlp_in, h_mlp_act — shared across all layers."""
+    model_dim = model.qo_bank.shape[1]
+    mlp_dim = model.mlp_up_bank.shape[1]
+    bufs = {
+        "h_attn_in": torch.zeros(model_dim, model_dim, device=device),
+        "h_attn_out": torch.zeros(model_dim, model_dim, device=device),
+        "h_mlp_in": torch.zeros(model_dim, model_dim, device=device),
+        "h_mlp_act": torch.zeros(mlp_dim, mlp_dim, device=device),
+    }
+    hooks = []
+    for block in model.blocks:
+        # Pre-hook on attn: capture attn_in (input to Q, K, V projections)
+        def _mk_attn_in_hook(b):
+            def _h(module, args):
+                x = args[0].detach().float().reshape(-1, model_dim)
+                b["h_attn_in"].addmm_(x.T, x)
+            return _h
+        hooks.append(block.attn.register_forward_pre_hook(_mk_attn_in_hook(bufs)))
+        # Pre-hook on mlp: capture mlp_in (input to MLP-up projection)
+        def _mk_mlp_in_hook(b):
+            def _h(module, args):
+                x = args[0].detach().float().reshape(-1, model_dim)
+                b["h_mlp_in"].addmm_(x.T, x)
+            return _h
+        hooks.append(block.mlp.register_forward_pre_hook(_mk_mlp_in_hook(bufs)))
+        # Callback in attn: capture y (pre-O-projection attn output)
+        def _mk_attn_out_save(b):
+            def _fn(y):
+                yf = y.float().reshape(-1, model_dim)
+                b["h_attn_out"].addmm_(yf.T, yf)
+            return _fn
+        block.attn._calib_save_y = _mk_attn_out_save(bufs)
+        # Callback in mlp: capture activation (pre-MLP-down)
+        def _mk_mlp_act_save(b):
+            def _fn(h):
+                hf = h.float().reshape(-1, mlp_dim)
+                b["h_mlp_act"].addmm_(hf.T, hf)
+            return _fn
+        block.mlp._calib_save_act = _mk_mlp_act_save(bufs)
+    model.eval()
+    with torch.no_grad():
+        for _ in range(n_batches):
+            x, y = get_batch_fn()
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
+                model(x, y)
+    # Remove all hooks and callbacks
+    for h in hooks:
+        h.remove()
+    for block in model.blocks:
+        block.attn._calib_save_y = None
+        block.mlp._calib_save_act = None
+    return bufs
+
+def quantize_state_dict_int6_gptq(
+    state_dict: dict[str, Tensor],
+    hessians: dict[str, Tensor],
+    n_layers: int,
+    clip_range: int = 31,
+    block_size: int = 128,
+) -> tuple[dict, dict]:
+    """Quantize the model state dict to INT6. Returns (quant_obj, stats)."""
+    h_qkv = hessians.get("h_attn_in")
+    h_o = hessians.get("h_attn_out")
+    h_mlp_up = hessians.get("h_mlp_in")
+    h_mlp_dn = hessians.get("h_mlp_act")
+    quantized: dict[str, Tensor] = {}
+    scales: dict[str, Tensor] = {}
+    passthrough: dict[str, Tensor] = {}
+    dtypes: dict[str, str] = {}
+    stats = {"baseline_bytes": 0, "quant_bytes": 0, "n_quant": 0, "n_pass": 0}
+
+    def _q_bank(t3d: Tensor, hess_fn) -> tuple[Tensor, Tensor]:
+        """Quantize each slice of a 3D bank tensor [slices, rows, cols]."""
+        qs = torch.zeros_like(t3d, dtype=torch.int8)
+        ss = torch.zeros(t3d.shape[0], t3d.shape[1], dtype=torch.float16)
+        for i in range(t3d.shape[0]):
+            h_i = hess_fn(i)
+            q_i, s_i = quantize_int6_gptq(t3d[i].float(), h_i, clip_range, block_size)
+            qs[i] = q_i
+            ss[i] = s_i
+        return qs.contiguous(), ss.contiguous()
+
+    for name, t in state_dict.items():
+        t = t.detach().cpu()
+        stats["baseline_bytes"] += t.numel() * t.element_size()
+        orig_dtype = str(t.dtype).removeprefix("torch.")
+        # Skip non-float, small, or control tensors → passthrough as float16
+        should_passthrough = (
+            not t.is_floating_point()
+            or t.numel() <= _GPTQ_KEEP_FLOAT_NUMEL
+            or any(p in name for p in CONTROL_TENSOR_NAME_PATTERNS)
+            or "mtp_heads" in name
+        )
+        if should_passthrough:
+            stored = t.to(torch.float16) if t.is_floating_point() else t
+            passthrough[name] = stored.contiguous()
+            dtypes[name] = orig_dtype
+            stats["n_pass"] += 1
+            stats["quant_bytes"] += stored.numel() * stored.element_size()
+            continue
+        # Bank tensors: quantize each slice with the appropriate Hessian
+        if name == "qo_bank":
+            # [2*n, d, d]: first n = Q, second n = O
+            q, s = _q_bank(t, lambda i: h_qkv if i < n_layers else h_o)
+        elif name == "kv_bank":
+            # [2*n, kv_dim, d]: both K and V see attn_in
+            q, s = _q_bank(t, lambda i: h_qkv)
+        elif name == "mlp_up_bank":
+            q, s = _q_bank(t, lambda i: h_mlp_up)
+        elif name == "mlp_down_bank":
+            q, s = _q_bank(t, lambda i: h_mlp_dn)
+        elif t.ndim == 2:
+            # Generic 2D: per-row quantization (bigram proj, VE proj, etc.)
+            q, s = quantize_int6_per_row(t.float(), clip_range)
+        else:
+            # 1D or irregular: passthrough
+            stored = t.to(torch.float16) if t.is_floating_point() else t
+            passthrough[name] = stored.contiguous()
+            dtypes[name] = orig_dtype
+            stats["n_pass"] += 1
+            stats["quant_bytes"] += stored.numel() * stored.element_size()
+            continue
+        quantized[name] = q
+        scales[name] = s
+        dtypes[name] = orig_dtype
+        stats["n_quant"] += 1
+        stats["quant_bytes"] += q.numel() * q.element_size() + s.numel() * s.element_size()
+
+    quant_obj = {
+        "__quant_format__": "int6_gptq_per_row_v1",
+        "quantized": quantized,
+        "scales": scales,
+        "dtypes": dtypes,
+        "passthrough": passthrough,
+    }
+    return quant_obj, stats
+
+def dequantize_state_dict_int6(quant_obj: dict) -> dict[str, Tensor]:
+    """Restore float state dict from INT6 quant_obj."""
+    out: dict[str, Tensor] = {}
+    dtypes = quant_obj.get("dtypes", {})
+    for name, q in quant_obj["quantized"].items():
+        target_dtype = getattr(torch, dtypes.get(name, "bfloat16"))
+        s = quant_obj["scales"][name]
+        if q.ndim == 3:
+            # Bank: [slices, rows, cols], scales: [slices, rows]
+            recon = q.float() * s.float()[:, :, None]
+        elif q.ndim == 2:
+            # 2D: [rows, cols], scales: [rows]
+            recon = q.float() * s.float()[:, None]
+        else:
+            recon = q.float() * s.float()
+        out[name] = recon.to(target_dtype).contiguous()
+    for name, t in quant_obj["passthrough"].items():
+        target_dtype_str = dtypes.get(name)
+        if target_dtype_str and t.is_floating_point():
+            out[name] = t.to(getattr(torch, target_dtype_str)).contiguous()
+        else:
+            out[name] = t.contiguous()
+    return out
+
+def pack_and_compress_quant_obj(quant_obj: dict) -> bytes:
+    buf = io.BytesIO()
+    torch.save(quant_obj, buf)
+    return _compress(buf.getvalue())
+
+def load_and_decompress_quant_obj(data: bytes) -> dict:
+    raw = _decompress(data)
+    return torch.load(io.BytesIO(raw), map_location="cpu", weights_only=False)
+
+
 # --- Training ---
 
 def main() -> None:
@@ -2067,12 +2344,53 @@ def main() -> None:
     excluded_mtp = sum(int(t.numel()) for k, t in full_state_dict.items() if "mtp_heads" in k)
     if excluded_mtp > 0:
         log0(f"export_excluding_mtp_params:{excluded_mtp}")
+    code_bytes = len(code.encode("utf-8"))
     if master_process:
         torch.save(export_sd, "final_model.pt")
         model_bytes = os.path.getsize("final_model.pt")
-        code_bytes = len(code.encode("utf-8"))
-        log0(f"Serialized model: {model_bytes} bytes")
-        log0(f"Code size: {code_bytes} bytes")
+        log0(f"Serialized model (raw): {model_bytes} bytes  code: {code_bytes} bytes")
+
+    # --- INT6 GPTQ POST-TRAINING QUANTIZATION ---
+    if args.gptq_enabled:
+        t_gptq_start = time.perf_counter()
+        log0(f"gptq:start compressor={_COMPRESSOR} calib_batches={args.gptq_calib_batches} clip_range={args.gptq_clip_range}")
+        if master_process:
+            # Collect Hessians via calibration forward passes (rank 0 only)
+            def _get_calib_batch():
+                return train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
+            base_model.eval()
+            hessians = _collect_hessians(base_model, _get_calib_batch, args.gptq_calib_batches, device)
+            log0(f"gptq:hessians_collected time={1000*(time.perf_counter()-t_gptq_start):.0f}ms")
+            # Quantize state dict
+            quant_obj, qstats = quantize_state_dict_int6_gptq(
+                export_sd, hessians, args.num_layers,
+                clip_range=args.gptq_clip_range, block_size=args.gptq_block_size,
+            )
+            del hessians  # free GPU memory
+            quant_ratio = qstats["baseline_bytes"] / max(qstats["quant_bytes"], 1)
+            log0(
+                f"gptq:quantized baseline={qstats['baseline_bytes']} quant={qstats['quant_bytes']} "
+                f"ratio={quant_ratio:.2f}x n_quant={qstats['n_quant']} n_pass={qstats['n_pass']}"
+            )
+            # Serialize + compress
+            compressed = pack_and_compress_quant_obj(quant_obj)
+            quant_path = "final_model.int6.zst"
+            with open(quant_path, "wb") as f:
+                f.write(compressed)
+            total_artifact = len(compressed) + code_bytes
+            log0(
+                f"gptq:saved path={quant_path} file_bytes={len(compressed)} "
+                f"total_artifact={total_artifact} gptq_time={1000*(time.perf_counter()-t_gptq_start):.0f}ms"
+            )
+        if distributed:
+            dist.barrier()
+        # All ranks: load quantized weights and restore model for final eval
+        with open("final_model.int6.zst", "rb") as f:
+            compressed_disk = f.read()
+        quant_obj_disk = load_and_decompress_quant_obj(compressed_disk)
+        dequant_state = dequantize_state_dict_int6(quant_obj_disk)
+        base_model.load_state_dict(dequant_state, strict=True)
+        log0("gptq:round_trip_ok model_restored_from_int6")
     sw_seq_len = effective_eval_seq_len
     if args.skip_final_eval:
         log0("final_eval:skipped sliding/ngram by SKIP_FINAL_EVAL=1")
