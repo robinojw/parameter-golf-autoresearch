@@ -42,7 +42,7 @@ You do NOT interact with RunPod directly. Tag a result `PROMOTE` to queue it.
 
 ## Metric
 `val_bpb` (bits per byte) on FineWeb. Lower is better.
-**Merged SOTA: 1.1147 bpb (PR #1019). Best unmerged: 1.0781 (PR #672, 30-epoch cosine TTT on PR #518 stack, SINGLE CHANGE). Second unmerged: 1.0806 (PR #1143, Scylla+TTT). Baseline: 1.2244 bpb.**
+**Merged SOTA: 1.1147 bpb (PR #1019). Best unmerged: 1.0781 (PR #672, 30-epoch cosine TTT on PR #518 stack). Second unmerged: 1.0806 (PR #1143, Scylla+TTT). Third unmerged: 1.0962 (PR #1176, bigbag: QK-Gain 4.0 + XSA-11 + Muon-TTT + SLOT). Also: PR #1172 (dexhunter, 1.1015, SLOT+Split-LR+GPTQ+XSA-all). Baseline: 1.2244 bpb.**
 Track both val_bpb AND artifact_bytes in results.tsv.
 
 ## Proven Techniques (do not re-implement)
@@ -82,9 +82,20 @@ Already on the leaderboard — build on these, don't repeat them:
   TTT_MUON=1, TTT_NS_STEPS=3. Entropy-adaptive epochs: 2/3/4 per chunk (H_HIGH=2.1, H_LOW=1.75)
   Gives ~-0.018 bpb TTT gain from older base. Drop-in improvement over vanilla SGD TTT.
 - **best_agree online n-gram ensemble** (NEW - PR #1145, AnirudhRahul, 1.1109): Causal eval-time overlay, ~0.003 bpb gain. Drop-in on any base model (no architecture change). 3 prefix-only experts: token n-gram (order=16), within-word continuation, word-start (order=4). Selection: pick by expected_gain = p*boost - log(1+q*(exp(boost)-1)). Agreement bonus: +0.500 if 2+ experts agree. Boost: p'(a) = exp(beta)*p(a)/Z (renormalized). Files: online_best_agree_eval.py + online_ngram_state.c (C extension). Hyperparams: TOKEN_ORDER=16, TOKEN_THRESHOLD=0.800, TOKEN_BOOST=2.625, WITHIN_TAU=0.450, WITHIN_BOOST=0.750, WORD_ORDER=4, WORD_NORMALIZE=strip_punct_lower, WORD_TAU=0.650, WORD_BOOST=0.750, AGREE_ADD_BOOST=0.500, CHUNK_TOKENS=131072. Eval time: ~468s on 8xH100. CONFIRMED VALID.
-- SLOT (Stochastic Logit Overlay at Test-time) — -0.0008 bpb, free eval-time gain
-  Config: SLOT_LR=0.003, SLOT_STEPS=5 (PR #1150 confirmed)
+- **SLOT (UNDERESTIMATED — PR #1176 shows -0.016 bpb, not -0.0008!)**: Per-batch delta [1,1,512] at last hidden layer.
+  Protocol: H=forward_hidden(x, no_grad), H.detach(), 5 AdamW steps on compute_logits(H+delta) only, score with detached delta.
+  Config: SLOT_LR=0.003, SLOT_STEPS=5 (PR #1176) or LR=0.005, steps=8 (PR #1172, ~90s). Better base model → bigger SLOT gain.
+  PR #1176 breakdown: TTT(-0.003) + SLOT(-0.016) = -0.019 total. With our GPTQ stack, expect -0.010 to -0.016 bpb. HIGH PRIORITY.
 - ResidLambdas — resid_lambda(init=1.0) + x0_lambda(init=0.1) per layer, best non-TTT at 1.1140
+- **QK_GAIN_INIT=4.0 (NEW — PR #1125 sweep, validated PR #1176)**: Per-head learnable Q scaling scalar.
+  Implementation: `self.q_gain = nn.Parameter(torch.full((num_heads,), qk_gain_init))` applied before QK dot product.
+  Default=1.5, optimal=4.0. Monotonic gains: 1.5<2.0<3.0<4.0. Impact: -0.006 bpb on H100, -0.0039 on RTX 5090.
+  Adds only 8 params (negligible). Drop-in improvement. Check if our MLX code already has q_gain. If not, add immediately.
+- **Split-LR (NEW — PR #1172, PR #1179)**: Different Muon LR per layer group.
+  Early layers 0-4: LR=0.025. Late layers 5-10: LR=0.030. Scale bank gradients by layer multiplier before reduce-scatter.
+  Consistent across dexhunter submissions. Part of multiple PR improvements.
+- **Step-1000 early stopping (PR #1162 meta-analysis)**: Step-1000 BPB correlates 0.86 with final BPB.
+  Kill bad local experiments at ITERATIONS=1000 (~90s in). If step-1000 BPB is ≥ expected, abort. Saves ~90% experiment time.
 - **MuonEq (NEW — arxiv:2603.28254v1)**: Lightweight O(m+n) row/column equilibration BEFORE Newton-Schulz orthogonalization.
   Three variants: RC (two-sided), R (row-only), C (column-only). Rebalances momentum matrix before NS step.
   No new hyperparameters. Novel direction not yet on leaderboard. ~5 lines in Muon optimizer.
@@ -143,189 +154,6 @@ Already on the leaderboard — build on these, don't repeat them:
 
 ## Strategy
 <!-- STRATEGY_START -->
-## 2026-03-31 (Cycle 26 — Cycle 25 timed out: zstd externally-managed env + TTT timeout)
-
-**Cycle 25 run (runpod_b80e17d_03310641) — training OK, TTT timed out:**
-- **val_bpb (pre-TTT): 1.1830** (step 5830/20000, 32 shards coprime loader working!)
-- post_ema val_bpb: 1.1819 (diagnostic)
-- EGGROLL: **34 improvements** in 23s ✓
-- GPTQ: 27.2MB → 16.66MB compressed (zlib, NOT zstd-22) — artifact 16.79MB > 16MB limit
-- zstandard: STILL failing — "externally-managed-environment" (Debian system Python). Fix: `--break-system-packages`
-- HF download: 31 shards in ~327s → uses up 327s of 1800s window before training starts
-- TTT: timed out (1800s limit exceeded by: 327s HF + 600s train + 61s GPTQ+EGGROLL = 988s consumed, TTT needs >812s)
-- Fix: increase timeout 1800→2400s (gives TTT ~1412s of budget)
-
-**Current state:** With 32 shards and coprime loader, training is fast and high quality.
-Val_bpb 1.1830 (no TTT) is already within 0.07 of merged SOTA 1.1147. With TTT (-0.041), expect ~1.142 bpb.
-
-**Two bugs fixed:**
-1. pip: `python3 -m pip install` → `python3 -m pip install --break-system-packages`
-2. timeout: 1800s → 2400s
-
-**Priority stack (Cycle 26):**
-1. **Retry with timeout+pip fixes** — same config TTT_ENABLED=1 TTT_EPOCHS=30 WARMDOWN_ITERS=4000 EGGROLL_ENABLED=1
-2. **Verify zstd-22** — log should show `compressor=zstd` not `compressor=zlib`
-3. **Verify TTT completes** — expect final val_bpb ~1.14 after TTT
-4. **Artifact check** — with zstd-22, expect ~13.5MB (comfortable headroom)
-
----
-## 2026-03-31 (Cycle 25 — Cycle 24 crashed: EGGROLL bug + HF path wrong + zstd install silent fail)
-
-**Cycle 24 run (runpod_b80e17d_03310524) CRASHED:**
-- val_bpb at step 4000: **1.2821** (before overfitting with 1 shard)
-- Crashed at EGGROLL: `RuntimeError: shape '[-1, 2048]' is invalid for input of size 1024`
-  - Root cause: `_egg_calib` passed `global_tokens=8192`, but `train_loader.world_size=8`, so `local_tokens = 8192 // 8 = 1024 < seq_len=2048`. Fix: use `4 * seq_len * world_size = 65536` as global_tokens.
-- HF dataset still 1 shard: `download_data.py` used wrong subfolder `"datasets/fineweb10B_sp1024"`. Correct is `"datasets/datasets/fineweb10B_sp1024"`. Fix: switched to `cached_challenge_fineweb.py --train-shards 32`.
-- zstandard still not installed: `pip install -q zstandard 2>/dev/null` silently failed. Fix: use `python3 -m pip install -q zstandard`.
-
-**Three bugs fixed (commit pending):**
-1. EGGROLL `_egg_calib` token count: `min(786432, 8192)` → `4 * seq_len * world_size`
-2. HF download: `download_data.py` → `cached_challenge_fineweb.py --train-shards 32`
-3. pip: `pip install` → `python3 -m pip install` (no stderr suppression)
-
-**Priority stack (Cycle 25):**
-1. **Retry with all fixes** — same config: TTT_ENABLED=1 TTT_EPOCHS=30 WARMDOWN_ITERS=4000 EGGROLL_ENABLED=1
-2. **Verify dataset** — logs should show `train shards: 32` and `LOADER_MODE=coprime`
-3. **Verify artifact size** — `gptq:saved ... total_artifact=` should be ≤ 16MB with zstd-22
-4. **After success** — analyze TTT + EGGROLL gains, plan ResidLambdas (RESID_MIX_X0_INIT=0.1)
-
----
-## 2026-03-31 (Cycle 24 — H100 baseline result: 1.3499 bpb; enable TTT + zstd-22)
-
-**H100 BASELINE COMPLETE (run: runpod_b80e17d_03310406):**
-- val_bpb: **1.3499518** (SW-stride64 eval, TTT disabled)
-- post_ema val_bpb: **1.3438** (diagnostic)
-- mid-train val_bpb (step 4000): **1.2799** (before wallclock cap at step 6851)
-- GPTQ: 106MB raw → 27.2MB quantized → **16.84MB compressed (zlib)** — 188KB over 16MB limit!
-- Issue: `zstandard` not installed on pod, fell back to zlib. Fix: `pip install -q zstandard` in training command (added).
-- Infrastructure fixes this cycle: env dict format, data/ rsync trailing slash, optional pull, trap artifacts on exit, timeout 720→1800s.
-
-**val_bpb 1.3499 vs merged SOTA 1.1147** — gap of 0.235 bpb. Main sources of gap:
-1. TTT disabled (expected -0.041 bpb from PR #672 with 30 epochs)
-2. MuonEq at H100 scale may not match local MLX gain
-3. Stack differences vs top entries (WARMDOWN_ITERS, ResidLambdas, etc.)
-
-**Priority stack (Cycle 24):**
-1. **Enable TTT + use zstd-22** — Run with TTT_ENABLED=1 TTT_EPOCHS=30. Expected: ~1.31 bpb. Also install zstandard so artifact fits in 16MB.
-2. **Add artifact_bytes log line** — Added `log0(f"artifact_bytes:{total_artifact}")` for orchestrator tracking (done).
-3. **After TTT run** — if budget allows, try WARMDOWN_ITERS=4000, ResidLambdas.
-
----
-## 2026-03-31 (Cycle 23 — MuonEq+TTT ported to train_gpt.py, first H100 run triggered)
-
-**FIRST H100 RUN TRIGGERED (commit b80e17d):** Full stack submitted to RunPod H100 SXM (8x H100 80GB HBM3). Run ID: runpod_b80e17d_*. Expected ~1.09-1.10 bpb from merged SOTA 1.1147.
-
-**Changes in this cycle:**
-- MuonEq RC equilibration (arxiv:2603.28254) added to `zeropower_via_newtonschulz5` in train_gpt.py. Controlled by MUON_EQ=1 (default). Locally: -0.103 bpb vs NS5 baseline.
-- Score-first TTT `eval_val_ttt` added: 30-epoch cosine LR decay per chunk (TTT_CHUNK=32768), bank-aware layer freezing (TTT_FREEZE_BLOCKS=2). Enabled by TTT_ENABLED=1. Expected -0.041 bpb per PR #672.
-- Fixed `run.log` output: log0 now writes to both `logs/{run_id}.txt` AND `run.log` in cwd, so orchestrator parse_run_log works correctly.
-- Added dedicated `val_bpb:{float}` log lines for orchestrator result parsing.
-- Fixed RunPod GPU type ID: "NVIDIA H100 80GB HBM3" (was "NVIDIA H100 SXM5 80GB" which didn't exist).
-
-**Current train_gpt.py stack:** ParamBanking + XSA-all-11 + EngramLite + coprime-stride + NS5+MuonEq + LEAKY_SLOPE=0.75 + EMA + GPTQ(int6+zstd-22) + TTT-30.
-
----
-## 2026-03-31 (Cycle 22 — GPTQ implementation DONE, Tier 2 unblocked)
-
-**GPTQ IMPLEMENTED (commit 260447f):** Full Hessian GPTQ with actorder now in both sota_1120_rascal_train_gpt.py and train_gpt.py. Train script now runs int6+zstd-22 post-training quantization automatically after training.
-
-**Architecture:**
-- `_collect_hessians`: calibration via forward hooks on block.attn (h_attn_in = Q/K/V input) and block.mlp (h_mlp_in = MLP-up input), plus _calib_save_y callbacks in CausalSelfAttention (h_attn_out = pre-O-proj) and MLP (h_mlp_act = pre-MLP-down). 64 batches.
-- `quantize_int6_gptq`: Cholesky H_inv, actorder (descending H.diag()), column-by-column error propagation. Falls back to per-row on LinAlgError.
-- `quantize_int6_per_row`: 5-way clip sweep [0.9990-1.0], per-row float16 scales.
-- Bank tensors (qo_bank, kv_bank, mlp_up_bank, mlp_down_bank) each quantized per-slice with appropriate shared Hessian. Non-bank tensors as float16 passthrough.
-- zstd-22 compression (fallback zlib-9 if zstandard unavailable).
-
-**train_gpt.py = sota_1120_rascal_train_gpt.py**: Full Rascal stack (ParamBanking, XSA-all, EngramLite, coprime-stride, NS5 Muon, LEAKY_SLOPE=0.75) + GPTQ. This is now the H100 submission script.
-
-**Constraint check note:** Checker uses 0.90 compression ratio (too conservative). Actual int6+zstd-22 ratio is ~0.50-0.55 for neural network weights. PR #1135 confirms 30M params fits within 16MB.
-
-**Priority stack (Cycle 22):**
-1. **First H100 run** — Run train_gpt.py on RunPod with NS5+MuonEq+LEAKY=0.75+EngramLite+XSA-all+GPTQ → target ~1.09-1.10 bpb
-2. **Port MuonEq to train_gpt.py** — MuonEq RC (arxiv:2603.28254) equilibration before NS5 already in MLX; add to PyTorch Muon optimizer in train_gpt.py
-3. **Port TTT (30 epochs cosine) to train_gpt.py** — TTT from MLX (train_gpt_mlx.py) to PyTorch (train_gpt.py); expected -0.041 bpb from PR #672
-4. **Promote via `python orchestrate.py --promote <run_id>`** after H100 run clears threshold
-
----
-## 2026-03-31 (Cycle 21 Reflection — TTT smoke test)
-
-**TTT implementation complete (commit ce4ba3c):** Score-first TTT with cosine LR schedule. TTT_EPOCHS=3, TTT_CHUNK_TOKENS=32768, cosine decay from TTT_LR=0.002 to 0. val_bpb 9.380 vs 9.371 MuonEq baseline — neutral/noise at 500 steps. EXPECTED: undertrained model (loss 6.4-9.4) has too-low signal for TTT to adapt meaningfully. TTT timing: 108.9s for 4 chunks (3 epochs each). H100 scale with well-trained model should show full PR #672 gain (-0.041 bpb at 30 epochs).
-
-**TTT API confirmed working:** `_deep_copy_params` + `model.update(orig_params)` restore correctly. `nn.value_and_grad` works in TTT loop. SGD applied with frozen first 2 blocks. Ready for H100 with TTT_EPOCHS=30.
-
-**LOCAL EXPERIMENTS AT LIMIT:** 500-step runs can't validate TTT, ResidLambdas, WARMDOWN_ITERS tuning, or most eval-time techniques. The model is too undertrained. Local experiments should only validate architectural changes (new layers, new loss functions) where even undertrained models show directional signal.
-
-**Priority stack (Cycle 21):**
-1. **IMPLEMENT GPTQ in sota_1120_rascal_train_gpt.py** — Unblocks Tier 2. Full details confirmed in PR #1135.
-2. **Port MuonEq + TTT to H100 script** — Add to Rascal base for submission
-3. **First H100 run** — NS5+MuonEq+TTT_EPOCHS=30 on current stack → target ~1.09-1.10 bpb
-4. **best_agree online ngram** — PR #1145, -0.003 bpb drop-in
-
----
-## 2026-03-31 (Cycle 20 Reflection — MuonEq RC experiment)
-
-**MuonEq RC POSITIVE locally (commit d0010d7):** Per-row/col normalization of gradient matrix before NS5 iterations (arxiv:2603.28254). val_bpb 9.371 vs NS5 baseline 9.474 (-0.103 bpb). Closes gap vs Turbo-Muon (9.354) at 500 steps. Unlike Turbo-Muon, keeps standard 5-iter NS which is confirmed better at H100 scale. Training_seconds=1374s (2.75s/step on M4 — acceptable). Novel: not yet on leaderboard.
-
-**IMPORTANT DISTINCTION from Turbo-Muon:** MuonEq is preconditioning (better spectral conditioning before NS), not coefficient tuning (fewer NS iterations). The H100 concern with Turbo-Muon was that Polar Express 4-iter had less accurate orthogonalization at long runs. MuonEq keeps 5 NS iters but improves their starting point. Should not have the same H100 degradation risk.
-
-**Next H100 run candidate:** NS5+MuonEq+EngramLite+coprime+XSA-all+LEAKY_SLOPE=0.75. Need to implement GPTQ in train_gpt.py first.
-
-**Priority stack (Cycle 20):**
-1. **IMPLEMENT GPTQ in train_gpt.py** — H100 only, can't test locally. Unblocks Tier 2.
-2. **Port MuonEq to train_gpt.py** — Add to PyTorch version for H100 submission
-3. **Test MuonEq at H100 scale** — confirm it doesn't degrade like Turbo-Muon
-4. **30-epoch cosine TTT** — HIGHEST PRIORITY eval-time gain (PR #672, -0.041 bpb)
-5. **best_agree online ngram** — PR #1145, -0.003 bpb drop-in
-
----
-## 2026-03-31 (Cycle 19 Reflection — NS5 Muon + ResidLambdas experiments)
-
-**NS5 Muon baseline established (commit 3c22252):** Switched from Turbo-Muon to standard cubic NS5 (a=15/8, b=-5/4, c=3/8). Fixed LEAKY_SLOPE default 0.3→0.75. Local baseline: 9.474 bpb (vs 9.354 Turbo-Muon). Expected regression at 500 steps — Turbo-Muon has early convergence advantage that disappears at 7000+ H100 steps. NS5 is correct for H100.
-
-**ResidLambdas NEGATIVE locally (discarded):** x0_lambda init=0.1 added 0.031 bpb regression at 500 steps. Scale-dependent: PR #1130 gains appear at 7000+ step H100 runs. attn_scale/mlp_scale (init=1.0) already implement the resid_lambda part; x0 injection needs many steps to learn. Note for H100: consider adding with init=0.05 after GPTQ is implemented.
-
-**LOCAL EXPERIMENTS HITTING LIMITS:** With NS5 Muon (slower convergence) and only 500 steps, most techniques need H100 scale to show directional signal. Continuing local experiments may give misleading results.
-
-**Current local script status:** XSA-all, EngramLite, coprime-stride, NS5 Muon (correct), LEAKY_SLOPE=0.75 (correct), MLP 3.5× (MLP_MULT=3.5 default), WARMDOWN_ITERS param. This is the Rascal-equivalent stack but with EngramLite instead of BigramHash.
-
-**Priority stack (Cycle 19):**
-1. **IMPLEMENT GPTQ in train_gpt.py** — H100 only, can't test locally. This unblocks Tier 2 submission.
-2. **Prepare H100 submission** — current NS5+EngramLite+coprime stack should reach ~1.1099 without GPTQ
-3. **ResidLambdas for H100** — add as additive x0 injection (init=0.05) to the Tier 2 run
-4. **NorMuon** — queued for research (implementation details needed)
-5. **Watch PR #1143, #1159** — legality decisions
-
-**What we have ready for H100:** NS5 Muon, XSA-all, EngramLite, coprime-stride, LEAKY_SLOPE=0.75, MLP 3.5×. Need: train_gpt.py parity, GPTQ implementation.
-
----
-## 2026-03-31 18:00 UTC (Cycle 18 Reflection — Post Deep Dive)
-
-**Key updates since Cycle 14:**
-
-**COPRIME-STRIDE LOADER: IMPLEMENTED** (commit 94ba1c7). `train_gpt_mlx.py` has alpha annealing 0.90→0.50 over 1800 batches, gcd(s,n)==1 stride, diversity-weighted shard sampling. This is off the to-do list.
-
-**FULL HESSIAN GPTQ: CONFIRMED DETAILS (still not implemented).** Cycle 17 deep dive extracted every detail from PR #1135. actorder=argsort(H.diag(), desc=True); double-Cholesky inverse; 5-way clip sweep [0.9990,0.9995,0.9999,0.99999,1.0]; block_size=128; clip_range=31; 64 calib batches; fallback to naive per-row on LinAlgError. Shared Hessian for Q,K,V separately. **This is the single biggest remaining implementation gap.** Without GPTQ we cannot match PR #1135 (1.1116) or PR #1105 (1.1088).
-
-**BIGRAMHASH OPTIMAL CONFIG:** PR #1135 uses BIGRAM_VOCAB_SIZE=2816, BIGRAM_DIM=112 (vs our possibly different sizing). Verify our config matches before Tier 2 runs.
-
-**LEAKY_SLOPE=0.75 locally confirmed positive:** Local experiment 774dc29 shows LEAKY_SLOPE=0.75 gives val_bpb 9.354 vs 9.366 with 0.3. PR #1135 uses 0.75. This should be our default.
-
-**No SOTA change (Cycle 16 leaderboard check):** Merged SOTA still 1.1147 (PR #1019). PRs #1163-1167 non-competitive. Best unmerged: PR #1143 (1.0806, Scylla tokenizer — awaiting legality review), PR #1105 (1.1088, best actionable target).
-
-**Priority stack (Cycle 18 revised):**
-1. **IMPLEMENT GPTQ** — biggest gap, all top entries use it. Full details confirmed.
-2. **MLP 3.5× + mixed int5/int6 + Brotli-11** — copy PR #1105 recipe exactly for 1.1088 target
-3. **Stack eval-time gains**: Muon TTT + SLOT + EGGROLL v2 + best_agree (combined ~-0.025 bpb)
-4. **Watch PR #1143 (Scylla tokenizer)** — if accepted, pivot immediately to tokenizer search
-5. **Watch PR #1159 (PPM-7 cache)** — if accepted, implement causal n-gram cache (paradigm-shift)
-
-**What we have implemented (MLX):** NS5 Muon, XSA-all, EngramLite, coprime-stride (fixed stride=n//steps, was broken at n//2), LEAKY_SLOPE=0.75, WARMDOWN_ITERS param
-**What we still need:** Full GPTQ, MLP 3.5×, mixed int5/int6, Brotli-11, eval-time stack, ParamBanking
-**NOTE:** Coprime-stride local signal is neutral (expected — 500 steps = 4% shard coverage). Coprime benefit appears at H100 scale with full shard traversal.
-
----
-<!-- STRATEGY_END -->
-
 ## Technique Map
 <!-- TECHNIQUE_MAP_START -->
 - [active] xsa_all (bpb 1.1091)
@@ -440,9 +268,6 @@ Val_bpb 1.1830 (no TTT) is already within 0.07 of merged SOTA 1.1147. With TTT (
 [No verified items yet — Tier A items will be deep-verified automatically]
 <!-- VERIFIED_END -->
 
-## On-Demand Research
-When you need fresh research context, pull it on demand:
-```bash
 # Full refresh — all 10 sources + grade + verify + reflect
 python orchestrate.py --refresh
 
@@ -475,19 +300,6 @@ Cost: ~$0.01/call. Budget: see TAVILY_MONTHLY_BUDGET_USD in .env.
 
 The background orchestrator also refreshes automatically: fast sources every 2h, full refresh every 12h.
 
-## Constraint Calculator
-Before designing an experiment, verify mathematical feasibility:
-```bash
-python orchestrate.py --check-constraints --params 23000000 --bits 6 --code-bytes 30000
-```
-This checks:
-- **Artifact size**: will N params at B bits fit in 16MB after zstd compression?
-- **Training steps**: how many steps fit in 600s at your batch size?
-- **Quantization MSE**: what's the theoretical noise floor at this bit-width?
-- **Entropy bound**: can zstd physically compress these weights below 16MB?
-
-Use this to validate ideas BEFORE writing code. Examples:
-```bash
 # "Can I fit 30M params at int5?"
 python orchestrate.py --check-constraints --params 30000000 --bits 5
 
@@ -500,81 +312,3 @@ python orchestrate.py --check-constraints --params 20000000 --bits 6 --batch-siz
 
 If the report says NOT FEASIBLE, do not proceed — redesign the approach.
 The calculator auto-calibrates from weight files on disk when available.
-
-## Experiment Loop
-
-LOOP FOREVER:
-
-### Every experiment (Tier 1):
-1. **Hypothesis**: one sentence — "I expect X to reduce val_bpb by ~Y% because Z"
-   Validate with `python orchestrate.py --check-constraints` before proceeding.
-
-2. **Critic check** (before training):
-   ```bash
-   python orchestrate.py --critique
-   ```
-   If BLOCK: fix the issue. If WARN: consider the feedback, proceed if justified.
-   This checks artifact size, diff size, and similarity to past failures.
-
-3. **Implement** in `train_gpt_mlx.py`. Keep diff < 100 lines.
-   Do not add new pip dependencies.
-
-4. **Commit**: `git commit -m "[tier1] <description>"`
-
-5. **Train locally**:
-   ```bash
-   RUN_ID=local_<tag>_<n> ITERATIONS=500 TRAIN_BATCH_TOKENS=8192 \
-   TRAIN_SEQ_LEN=512 MLX_EAGER_EVAL=1 \
-   python3 train_gpt_mlx.py > run.log 2>&1
-   ```
-
-6. **Extract results**:
-   ```bash
-   grep "^val_bpb:\|^val_loss:\|^artifact_bytes:\|stopping_early" run.log
-   ```
-   Empty grep = crash. Run `tail -n 50 run.log` for stack trace.
-
-7. **Log to results.tsv** (tab-separated):
-   ```
-   commit  tier  val_bpb  artifact_bytes  memory_gb  status  promoted  cost_usd  description  source_item
-   ```
-   `tier`: `local` or `runpod`
-   `status`: `keep`, `discard`, `crash`
-   `promoted`: `yes`, `no`, or `pending`
-   `source_item`: the research item ID that inspired this experiment (e.g., `arxiv:2401.12345`), or empty if original idea.
-
-8. **Decision**:
-   - The orchestrator enforces the promotion threshold dynamically (scales with distance from SOTA).
-     Run `python orchestrate.py --promote <commit_hash>` — it will tell you if the result qualifies.
-   - No improvement or marginal → `keep` only if simplified code
-   - Worse → `git reset --hard HEAD~1`, `discard`
-   - Crash after 2 fix attempts → log `crash`, move on
-
-9. **After promotion**: translate the MLX changes to `train_gpt.py` (PyTorch).
-   The orchestrator will handle the RunPod run automatically.
-   Continue Tier 1 experiments — do not wait for RunPod to finish.
-
-### Tier 2 results (async):
-When `orchestrate.py` finishes a RunPod run it appends to results.tsv automatically.
-Check periodically: `tail -n 5 results.tsv`
-If RunPod val_bpb confirms improvement → flag as `keep (runpod-confirmed)`.
-If RunPod val_bpb is worse → investigate why (architecture translation error? scale mismatch?).
-
-### Tournament Mode
-For structured hypothesis testing, use the tournament:
-```bash
-python orchestrate.py --tournament [--prompt "focus on test-time training"]
-```
-This generates 4 candidates, eliminates 2 after 100 iterations, then runs the survivors for 500 iterations. The winner is reported with its hypothesis and val_bpb.
-
-## Timeout Rules
-- Tier 1: if run exceeds 10 minutes wall-clock, kill and treat as crash
-- Tier 2: orchestrator enforces 12-minute hard timeout and terminates pod automatically
-
-## Output Format (MLX)
-```
-val_bpb:           1.XXXXXX
-val_loss:          X.XXXXXX
-artifact_bytes:    XXXXXXXX
-training_seconds:  XXX.X
-```
