@@ -2078,11 +2078,15 @@ def eggroll_refine(
     dequant_state = dequantize_state_dict_int6(quant_obj)
     base_model.load_state_dict(dequant_state, strict=True)
 
+    # Pre-load a fixed calibration batch so all evals use the same data (no noise)
+    calib_x, calib_y = calib_getter()
+    calib_x = calib_x.to(device)
+    calib_y = calib_y.to(device)
+
     def _calib_loss() -> float:
         base_model.eval()
-        x, y = calib_getter()
         with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            return base_model(x, y).item()
+            return base_model(calib_x, calib_y).item()
 
     current_loss = _calib_loss()
 
