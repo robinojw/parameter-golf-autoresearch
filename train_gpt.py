@@ -139,6 +139,13 @@ class Hyperparameters:
     gptq_block_size = int(os.environ.get("GPTQ_BLOCK_SIZE", 128))
     gptq_clip_range = int(os.environ.get("GPTQ_CLIP_RANGE", 31))   # int6: [-31, 31]
     gptq_reserve_ms = float(os.environ.get("GPTQ_RESERVE_MS", "10000"))  # ms reserved for GPTQ
+    # TTT (Test-Time Training) score-first eval — PR #672, 30-epoch cosine = -0.041 bpb
+    ttt_enabled = bool(int(os.environ.get("TTT_ENABLED", "0")))
+    ttt_lr = float(os.environ.get("TTT_LR", "0.002"))
+    ttt_epochs = int(os.environ.get("TTT_EPOCHS", "30"))
+    ttt_chunk_tokens = int(os.environ.get("TTT_CHUNK_TOKENS", "32768"))
+    ttt_freeze_blocks = int(os.environ.get("TTT_FREEZE_BLOCKS", "2"))
+    ttt_batch_size = int(os.environ.get("TTT_BATCH_SIZE", "4"))  # sequences per gradient step
 
 
 def maybe_compile(fn_or_module, *, enabled: bool, fullgraph: bool, mode: str = ""):
@@ -234,8 +241,15 @@ class TrainNgramTracker:
 
 # --- Batched Newton-Schulz orthogonalization ---
 
+_MUON_EQ = bool(int(os.environ.get("MUON_EQ", "1")))  # MuonEq RC equilibration (arxiv:2603.28254)
+
+
 def zeropower_via_newtonschulz5(G: Tensor, steps: int = 5, eps: float = 1e-7) -> Tensor:
-    """Batched Newton-Schulz orthogonalization. G: (B,M,N) or (M,N)."""
+    """Batched Newton-Schulz orthogonalization with optional MuonEq RC equilibration.
+
+    MuonEq (arxiv:2603.28254): O(m+n) per-row/column normalization before NS5 improves
+    spectral conditioning of the momentum matrix. Controlled by MUON_EQ env var.
+    """
     a, b, c = (3.4445, -4.7750, 2.0315)
     was_2d = G.ndim == 2
     if was_2d:
@@ -245,6 +259,13 @@ def zeropower_via_newtonschulz5(G: Tensor, steps: int = 5, eps: float = 1e-7) ->
     if transposed:
         X = X.mT
     X = X / (X.norm(dim=(-2, -1), keepdim=True) + eps)
+    if _MUON_EQ:
+        # RC equilibration: normalize rows then columns (arxiv:2603.28254)
+        row_norms = X.norm(dim=-1, keepdim=True) + 1e-8
+        X = X / row_norms
+        col_norms = X.norm(dim=-2, keepdim=True) + 1e-8
+        X = X / col_norms
+        X = X / (X.norm(dim=(-2, -1), keepdim=True) + eps)
     for _ in range(steps):
         A = X @ X.mT
         B = b * A + c * (A @ A)
@@ -1653,6 +1674,132 @@ def eval_val_sliding(
     return val_loss, bits_per_token * tokens_per_byte
 
 
+def eval_val_ttt(
+    args: Hyperparameters,
+    base_model: nn.Module,
+    val_tokens: Tensor,
+    device: torch.device,
+    base_bytes_lut: Tensor,
+    has_leading_space_lut: Tensor,
+    is_boundary_token_lut: Tensor,
+) -> tuple[float, float]:
+    """Score-first TTT: for each chunk, adapt model (cosine LR), score, restore weights.
+
+    Each chunk: TTT_EPOCHS gradient passes with cosine LR decay from ttt_lr to 0,
+    then score the chunk with the adapted model, then restore original weights.
+    First ttt_freeze_blocks layers are frozen during adaptation.
+    Returns (val_loss, val_bpb).
+    """
+    seq_len = args.train_seq_len
+    chunk_size = args.ttt_chunk_tokens
+    ttt_batch = args.ttt_batch_size
+    total = val_tokens.numel() - 1
+
+    orig_state = copy.deepcopy(base_model.state_dict())
+
+    # Frozen parameter name prefixes (bank indices 0..freeze-1 for block-level freeze)
+    # Bank params: qo_bank[2n, M, N], kv_bank[2n, M, N], mlp_up_bank[n, M, N], mlp_down_bank[n, M, N]
+    # For freeze_blocks=2: zero grad for bank slices [:2] (and [n:n+2] for qo/kv which pack Q+O banks)
+    freeze_n = args.ttt_freeze_blocks
+    num_layers = args.num_layers
+
+    total_loss = 0.0
+    token_count = 0.0
+    byte_count = 0.0
+    n_chunks = 0
+    t0 = time.perf_counter()
+
+    for chunk_start in range(0, total - seq_len, chunk_size):
+        chunk_end = min(chunk_start + chunk_size, total)
+        n_toks = chunk_end - chunk_start
+        usable = (n_toks // seq_len) * seq_len
+        n_seqs = usable // seq_len
+        if n_seqs == 0:
+            continue
+
+        c_toks = val_tokens[chunk_start:chunk_end + 1].to(device=device, dtype=torch.int64)
+        steps_per_epoch = max(n_seqs // max(ttt_batch, 1), 1)
+        total_steps = args.ttt_epochs * steps_per_epoch
+        global_step = 0
+
+        base_model.train()
+        for _epoch in range(args.ttt_epochs):
+            for b_start in range(0, n_seqs, ttt_batch):
+                b_end = min(b_start + ttt_batch, n_seqs)
+                bs = b_end - b_start
+                raw_s = b_start * seq_len
+                raw_e = raw_s + bs * seq_len + 1
+                local = c_toks[raw_s:raw_e]
+                if local.numel() < bs * seq_len + 1:
+                    break
+                x = local[:-1].view(bs, seq_len)
+                y = local[1:].view(bs, seq_len)
+
+                cos_t = global_step / max(total_steps - 1, 1)
+                lr_t = args.ttt_lr * 0.5 * (1.0 + math.cos(math.pi * cos_t))
+
+                base_model.zero_grad()
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                    loss = base_model(x, y)
+                loss.backward()
+
+                with torch.no_grad():
+                    for name, param in base_model.named_parameters():
+                        if param.grad is None:
+                            continue
+                        # Zero frozen slices in bank tensors
+                        if freeze_n > 0:
+                            if name == "qo_bank":
+                                # qo_bank shape: (2*num_layers, M, N) — Q banks 0..n-1, O banks n..2n-1
+                                param.grad[:freeze_n].zero_()
+                                param.grad[num_layers:num_layers + freeze_n].zero_()
+                            elif name == "kv_bank":
+                                param.grad[:freeze_n].zero_()
+                                param.grad[num_layers:num_layers + freeze_n].zero_()
+                            elif name in ("mlp_up_bank", "mlp_down_bank"):
+                                param.grad[:freeze_n].zero_()
+                        param.data.add_(param.grad, alpha=-lr_t)
+
+                global_step += 1
+
+        # Score adapted model on this chunk
+        base_model.eval()
+        with torch.inference_mode():
+            for b_start in range(0, n_seqs, ttt_batch):
+                b_end = min(b_start + ttt_batch, n_seqs)
+                bs = b_end - b_start
+                raw_s = b_start * seq_len
+                raw_e = raw_s + bs * seq_len + 1
+                local = c_toks[raw_s:raw_e]
+                if local.numel() < bs * seq_len + 1:
+                    break
+                x = local[:-1].view(bs, seq_len)
+                y = local[1:].view(bs, seq_len)
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                    logits = base_model.forward_logits(x)
+                nll = F.cross_entropy(
+                    logits.reshape(-1, logits.size(-1)).float(),
+                    y.reshape(-1),
+                    reduction="sum",
+                )
+                total_loss += nll.item()
+                tgt = y.reshape(-1)
+                prev = x.reshape(-1)
+                tb = base_bytes_lut[tgt].to(torch.float64)
+                tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
+                byte_count += tb.sum().item()
+                token_count += float(tgt.numel())
+
+        # Restore original weights before next chunk
+        base_model.load_state_dict(orig_state)
+        n_chunks += 1
+
+    ttt_secs = time.perf_counter() - t0
+    val_loss = total_loss / max(token_count, 1.0)
+    bits_per_token = val_loss / math.log(2.0)
+    tokens_per_byte = token_count / max(byte_count, 1.0)
+    return val_loss, bits_per_token * tokens_per_byte, n_chunks, ttt_secs
+
 
 # ==============================
 # INT6 GPTQ POST-TRAINING QUANTIZATION
@@ -1944,18 +2091,21 @@ def main() -> None:
     enable_mem_efficient_sdp(False)
     enable_math_sdp(False)
     logfile = None
+    run_log = None  # Orchestrator expects run.log in cwd for result parsing
     if master_process:
         os.makedirs("logs", exist_ok=True)
         logfile = f"logs/{args.run_id}.txt"
+        run_log = "run.log"
         print(logfile)
     def log0(msg: str, console: bool = True) -> None:
         if not master_process:
             return
         if console:
             print(msg)
-        if logfile is not None:
-            with open(logfile, "a", encoding="utf-8") as f:
-                print(msg, file=f)
+        for lf in [logfile, run_log]:
+            if lf is not None:
+                with open(lf, "a", encoding="utf-8") as f:
+                    print(msg, file=f)
     log0(code, console=False)
     log0("=" * 100, console=False)
     log0(f"Running Python {sys.version}", console=False)
@@ -2392,6 +2542,20 @@ def main() -> None:
         base_model.load_state_dict(dequant_state, strict=True)
         log0("gptq:round_trip_ok model_restored_from_int6")
     sw_seq_len = effective_eval_seq_len
+    # TTT (Test-Time Training) score-first eval — PR #672, -0.041 bpb at 30 epochs
+    if args.ttt_enabled and not args.skip_final_eval:
+        torch.cuda.synchronize()
+        ttt_val_loss, ttt_val_bpb, ttt_n_chunks, ttt_secs = eval_val_ttt(
+            args, base_model, val_tokens, device,
+            base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
+        )
+        log0(
+            f"ttt_eval val_loss:{ttt_val_loss:.4f} val_bpb:{ttt_val_bpb:.4f} "
+            f"chunks:{ttt_n_chunks} epochs:{args.ttt_epochs} ttt_time:{ttt_secs:.0f}s"
+        )
+        log0(f"ttt_eval_exact val_loss:{ttt_val_loss:.8f} val_bpb:{ttt_val_bpb:.8f}")
+        # Report as primary metric (orchestrator parses lines starting with val_bpb:)
+        log0(f"val_bpb:{ttt_val_bpb:.8f}")
     if args.skip_final_eval:
         log0("final_eval:skipped sliding/ngram by SKIP_FINAL_EVAL=1")
     else:
@@ -2410,6 +2574,9 @@ def main() -> None:
                 f"stride:{args.eval_stride} eval_time:{1000.0 * (time.perf_counter() - t_slide):.0f}ms"
             )
             log0(f"final_sliding_window_exact val_loss:{sw_val_loss:.8f} val_bpb:{sw_val_bpb:.8f}")
+            if not args.ttt_enabled and args.eval_stride == 64:
+                # Primary metric line (only if we won't also run s64 block below)
+                log0(f"val_bpb:{sw_val_bpb:.8f}")
         if args.eval_stride != 64 and 64 < sw_seq_len:
             torch.cuda.synchronize()
             t_slide64 = time.perf_counter()
@@ -2425,6 +2592,9 @@ def main() -> None:
                 f"stride:64 eval_time:{1000.0 * (time.perf_counter() - t_slide64):.0f}ms"
             )
             log0(f"final_sliding_window_s64_exact val_loss:{sw64_val_loss:.8f} val_bpb:{sw64_val_bpb:.8f}")
+            if not args.ttt_enabled:
+                # Primary metric line for orchestrator result parsing
+                log0(f"val_bpb:{sw64_val_bpb:.8f}")
         if args.ngram_eval_order >= 2:
             if distributed:
                 dist.barrier()
