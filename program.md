@@ -143,6 +143,32 @@ Already on the leaderboard — build on these, don't repeat them:
 
 ## Strategy
 <!-- STRATEGY_START -->
+## 2026-03-31 (Cycle 26 — Cycle 25 timed out: zstd externally-managed env + TTT timeout)
+
+**Cycle 25 run (runpod_b80e17d_03310641) — training OK, TTT timed out:**
+- **val_bpb (pre-TTT): 1.1830** (step 5830/20000, 32 shards coprime loader working!)
+- post_ema val_bpb: 1.1819 (diagnostic)
+- EGGROLL: **34 improvements** in 23s ✓
+- GPTQ: 27.2MB → 16.66MB compressed (zlib, NOT zstd-22) — artifact 16.79MB > 16MB limit
+- zstandard: STILL failing — "externally-managed-environment" (Debian system Python). Fix: `--break-system-packages`
+- HF download: 31 shards in ~327s → uses up 327s of 1800s window before training starts
+- TTT: timed out (1800s limit exceeded by: 327s HF + 600s train + 61s GPTQ+EGGROLL = 988s consumed, TTT needs >812s)
+- Fix: increase timeout 1800→2400s (gives TTT ~1412s of budget)
+
+**Current state:** With 32 shards and coprime loader, training is fast and high quality.
+Val_bpb 1.1830 (no TTT) is already within 0.07 of merged SOTA 1.1147. With TTT (-0.041), expect ~1.142 bpb.
+
+**Two bugs fixed:**
+1. pip: `python3 -m pip install` → `python3 -m pip install --break-system-packages`
+2. timeout: 1800s → 2400s
+
+**Priority stack (Cycle 26):**
+1. **Retry with timeout+pip fixes** — same config TTT_ENABLED=1 TTT_EPOCHS=30 WARMDOWN_ITERS=4000 EGGROLL_ENABLED=1
+2. **Verify zstd-22** — log should show `compressor=zstd` not `compressor=zlib`
+3. **Verify TTT completes** — expect final val_bpb ~1.14 after TTT
+4. **Artifact check** — with zstd-22, expect ~13.5MB (comfortable headroom)
+
+---
 ## 2026-03-31 (Cycle 25 — Cycle 24 crashed: EGGROLL bug + HF path wrong + zstd install silent fail)
 
 **Cycle 24 run (runpod_b80e17d_03310524) CRASHED:**

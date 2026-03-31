@@ -6,7 +6,7 @@ _DEFAULT_REMOTE_DIR = "/workspace/parameter-golf-autoresearch/"
 _DEFAULT_LOCAL_DIR = "./runpod_results/"
 _DEFAULT_NPROC = 8
 _DEFAULT_VOCAB_SIZE = 1024
-_DEFAULT_TIMEOUT = 1800  # 30 min — 600s train + GPTQ + eval overhead
+_DEFAULT_TIMEOUT = 2400  # 40 min — 600s train + GPTQ + EGGROLL + TTT + HF download overhead
 _TIMEOUT_EXIT_CODE = -1
 _RSYNC_BIN = "rsync"
 _RSYNC_FLAGS = "-avz"
@@ -114,7 +114,7 @@ def run_remote_training(
         f"cp {_wd}/final_model.pt ~/model.bin 2>/dev/null; "
         f"}}; "
         f"trap _copy_artifacts EXIT; "
-        f"python3 -m pip install -q zstandard; "
+        f"python3 -m pip install -q zstandard --break-system-packages 2>&1 | grep -v 'already satisfied' || true; "
         f"{_data_detect}"
         f"{extra_env}RUN_ID={shlex.quote(run_id)} "
         f"torchrun --standalone --nproc_per_node={nproc} train_gpt.py"
