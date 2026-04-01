@@ -1,4 +1,5 @@
 """Tests for orchestrate._handle_promotion with preflight and typed errors."""
+
 import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -21,9 +22,7 @@ class TestHandlePromotionPreflight:
             "orchestrate._make_budget_manager",
             lambda: MagicMock(can_submit=MagicMock(return_value=(True, "ok"))),
         )
-        monkeypatch.setattr(
-            "research.experiments.get_current_best_bpb", lambda: 1.15
-        )
+        monkeypatch.setattr("research.experiments.get_current_best_bpb", lambda: 1.15)
         monkeypatch.setattr(
             "compute.threshold.compute_promotion_threshold", lambda *a, **kw: 0.99
         )
@@ -31,6 +30,7 @@ class TestHandlePromotionPreflight:
         # Track whether create_pod is called
         mock_client = MagicMock()
         import compute.runpod_client as rc_mod
+
         original_rc = rc_mod.RunPodClient
         monkeypatch.setattr(rc_mod, "RunPodClient", lambda **kw: mock_client)
         monkeypatch.setenv("RUNPOD_API_KEY", "test-key")
@@ -50,6 +50,8 @@ class TestHandlePromotionPreflight:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "runpod_results").mkdir()
 
+        monkeypatch.setenv("RUNPOD_USE_HTTP", "0")  # force SSH flow for this test
+
         monkeypatch.setattr(
             "orchestrate._make_budget_manager",
             lambda: MagicMock(
@@ -57,9 +59,7 @@ class TestHandlePromotionPreflight:
                 record_run=MagicMock(return_value=1.50),
             ),
         )
-        monkeypatch.setattr(
-            "research.experiments.get_current_best_bpb", lambda: 1.15
-        )
+        monkeypatch.setattr("research.experiments.get_current_best_bpb", lambda: 1.15)
         monkeypatch.setattr(
             "compute.threshold.compute_promotion_threshold", lambda *a, **kw: 0.99
         )
@@ -71,17 +71,17 @@ class TestHandlePromotionPreflight:
         mock_client.wait_for_ready.return_value = "root@1.2.3.4 -p 17445"
 
         import compute.runpod_client as rc_mod
+
         monkeypatch.setattr(rc_mod, "RunPodClient", lambda **kw: mock_client)
 
         monkeypatch.setattr("compute.sync.push_to_pod", lambda *a, **kw: None)
-        monkeypatch.setattr(
-            "compute.sync.run_remote_training", lambda *a, **kw: 0
-        )
+        monkeypatch.setattr("compute.sync.run_remote_training", lambda *a, **kw: 0)
         monkeypatch.setattr("compute.sync.pull_from_pod", lambda *a, **kw: None)
 
         monkeypatch.setenv("RUNPOD_API_KEY", "test-key")
 
         from orchestrate import _handle_promotion
+
         _handle_promotion({"source_experiment": "abc123", "message": "test"})
 
         mock_client.create_pod.assert_called_once()
@@ -98,6 +98,8 @@ class TestHandlePromotionErrorHandling:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "runpod_results").mkdir()
 
+        monkeypatch.setenv("RUNPOD_USE_HTTP", "0")  # force SSH flow for this test
+
         monkeypatch.setattr(
             "orchestrate._make_budget_manager",
             lambda: MagicMock(
@@ -105,9 +107,7 @@ class TestHandlePromotionErrorHandling:
                 record_run=MagicMock(return_value=1.50),
             ),
         )
-        monkeypatch.setattr(
-            "research.experiments.get_current_best_bpb", lambda: 1.15
-        )
+        monkeypatch.setattr("research.experiments.get_current_best_bpb", lambda: 1.15)
         monkeypatch.setattr(
             "compute.threshold.compute_promotion_threshold", lambda *a, **kw: 0.99
         )
@@ -120,10 +120,12 @@ class TestHandlePromotionErrorHandling:
         )
 
         import compute.runpod_client as rc_mod
+
         monkeypatch.setattr(rc_mod, "RunPodClient", lambda **kw: mock_client)
         monkeypatch.setenv("RUNPOD_API_KEY", "test-key")
 
         from orchestrate import _handle_promotion
+
         _handle_promotion({"source_experiment": "abc123", "message": "test"})
 
         # Pod should be terminated (called from both except and finally blocks)

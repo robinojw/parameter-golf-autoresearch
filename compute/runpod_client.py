@@ -324,6 +324,10 @@ class RunPodClient:
             "\n"
             "python3 -m pip install -q zstandard --break-system-packages 2>&1 | grep -v 'already satisfied' || true\n"
             "\n"
+            "echo 'Installing Flash Attention 3 (Hopper kernels)...'\n"
+            "pip install git+https://github.com/Dao-AILab/flash-attention.git#subdirectory=hopper --no-build-isolation --break-system-packages 2>&1 | tail -3 || true\n"
+            "python3 -c 'from flash_attn_interface import flash_attn_func; print(\"FA3 OK\")' 2>&1 || echo 'FA3 install failed, falling back to FA2'\n"
+            "\n"
             'git clone --depth 1 --branch "$GIT_BRANCH" '
             '"https://${GITHUB_TOKEN}@github.com/' + _GIT_REPO + '.git" '
             "/workspace/repo\n"
@@ -341,8 +345,8 @@ class RunPodClient:
             "done\n"
             "\n"
             'if [ -z "$_dp" ]; then\n'
-            '    echo "Full dataset not pre-installed, downloading 32 shards from HuggingFace..."\n'
-            "    cd /workspace/repo/data && python3 cached_challenge_fineweb.py --train-shards 32 || true\n"
+            '    echo "Full dataset not pre-installed, downloading 80 shards from HuggingFace..."\n'
+            "    cd /workspace/repo/data && python3 cached_challenge_fineweb.py --train-shards 80 || true\n"
             "    cd /workspace\n"
             "    _dp=/workspace/repo/data/datasets/fineweb10B_sp1024\n"
             "fi\n"
@@ -353,6 +357,18 @@ class RunPodClient:
             'if [ "$_nshards" -ge 4 ]; then export LOADER_MODE=coprime; '
             "else export LOADER_MODE=sequential; fi\n"
             'echo "LOADER_MODE=$LOADER_MODE"\n'
+            "\n"
+            'echo "PGOLF_ENV_CONFIG_START"\n'
+            'echo "NPROC=$NPROC"\n'
+            'echo "DATA_PATH=$DATA_PATH"\n'
+            'echo "LOADER_MODE=$LOADER_MODE"\n'
+            'echo "GIT_BRANCH=$GIT_BRANCH"\n'
+            'echo "RUN_ID=$RUN_ID"\n'
+            'python3 -c "from flash_attn_interface import flash_attn_func; print(\'FA3 OK\')" 2>/dev/null || echo "FA3 NOT_AVAILABLE"\n'
+            "python3 -c \"import brotli; print('compressor:brotli')\" 2>/dev/null || "
+            "python3 -c \"import zstandard; print('compressor:zstd')\" 2>/dev/null || "
+            'echo "compressor:zlib"\n'
+            'echo "PGOLF_ENV_CONFIG_END"\n'
             "\n"
             "cd /workspace\n"
             "set +e\n"
@@ -393,6 +409,9 @@ class RunPodClient:
         github_token = os.environ.get("GITHUB_TOKEN", "")
         if github_token:
             env["GITHUB_TOKEN"] = github_token
+        hf_token = os.environ.get("HF_TOKEN", "")
+        if hf_token:
+            env["HF_TOKEN"] = hf_token
         env["GIT_BRANCH"] = git_branch
         env["RUN_ID"] = run_id
         env["NPROC"] = str(gpu_count)
@@ -491,16 +510,40 @@ class RunPodClient:
             return False
 
     def _cleanup_all(self) -> None:
-        if not self._active_pods:
-            return
-        print(f"Cleaning up {len(self._active_pods)} active pod(s)...")
+        """Terminate all running pods — both tracked in-memory and orphaned from killed processes."""
+        terminated = 0
+        try:
+            resp = requests.get(
+                f"{_BASE_URL}/pods",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                timeout=_HTTP_TIMEOUT,
+            )
+            resp.raise_for_status()
+            for pod in resp.json():
+                if pod.get("desiredStatus") == "RUNNING":
+                    pod_id = pod["id"]
+                    pod_name = pod.get("name", "")
+                    if pod_name.startswith("pgolf-"):
+                        try:
+                            _api_request("DELETE", f"/pods/{pod_id}", self.api_key)
+                            print(f"  Terminated orphaned pod {pod_id} ({pod_name})")
+                            terminated += 1
+                        except Exception as exc:
+                            print(f"  Failed to terminate {pod_id}: {exc}")
+        except Exception as exc:
+            print(f"  Failed to list pods for cleanup: {exc}")
+
         for pod_id in list(self._active_pods):
             try:
                 _api_request("DELETE", f"/pods/{pod_id}", self.api_key)
-                print(f"  Terminated {pod_id}")
-            except Exception as exc:
-                print(f"  Failed to terminate {pod_id}: {exc}")
+                print(f"  Terminated tracked pod {pod_id}")
+                terminated += 1
+            except Exception:
+                pass
         self._active_pods.clear()
+
+        if terminated:
+            print(f"Cleaned up {terminated} pod(s)")
 
 
 # ---------------------------------------------------------------------------

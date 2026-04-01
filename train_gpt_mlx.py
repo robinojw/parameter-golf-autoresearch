@@ -43,6 +43,7 @@ LOGIT_SOFTCAP = float(os.getenv("LOGIT_SOFTCAP", "30.0"))
 ROPE_BASE = float(os.getenv("ROPE_BASE", "10000.0"))
 ROPE_DIMS = int(os.getenv("ROPE_DIMS", "16"))
 QK_GAIN_INIT = float(os.getenv("QK_GAIN_INIT", "4.0"))
+P2_LOSS = bool(int(os.getenv("P2_LOSS", "0")))  # PR #1180 focal loss: (1-p)^2 * CE
 LEAKY_SLOPE = float(os.getenv("LEAKY_SLOPE", "0.75"))
 # EngramLite params
 NGRAM_BUCKETS = int(os.getenv("NGRAM_BUCKETS", "8192"))
@@ -68,6 +69,10 @@ MUON_WARMUP = int(os.getenv("MUON_WARMUP", "500"))
 MUON_WD = float(os.getenv("MUON_WD", "0.04"))
 MUON_NS_STEPS = int(os.getenv("MUON_NS_STEPS", "5"))
 MUON_EQ = bool(int(os.getenv("MUON_EQ", "1")))  # MuonEq RC equilibration (arxiv:2603.28254)
+MUON_VR = bool(int(os.getenv("MUON_VR", "0")))  # NorMuon-style VR: per-row RMS norm AFTER NS5 (post-NS adaptation)
+MUON_VR_BETA2 = float(os.getenv("MUON_VR_BETA2", "0.95"))  # EMA decay for VR second moment
+MUON_LATE_LR_SCALE = float(os.getenv("MUON_LATE_LR_SCALE", "1.2"))  # Split LR: layers >= MUON_LATE_START get lr*scale
+MUON_LATE_START = int(os.getenv("MUON_LATE_START", "5"))  # dexhunter: layers 5-10 use 0.030, 0-4 use 0.025
 EMA_DECAY = float(os.getenv("EMA_DECAY", "0.995"))
 EMA_START = int(os.getenv("EMA_START", "100"))  # start EMA after step 100
 EMA_EVAL_EVERY = int(os.getenv("EMA_EVAL_EVERY", "50"))  # force eval EMA every N steps
@@ -605,6 +610,19 @@ def cross_entropy(logits: mx.array, targets: mx.array) -> mx.array:
     ).mean()
 
 
+def cross_entropy_p2(logits: mx.array, targets: mx.array) -> mx.array:
+    """P2 focal loss (PR #1180): (1-p)^2 * CE. Focuses training on uncertain tokens."""
+    flat_logits = logits.reshape(-1, logits.shape[-1])
+    flat_targets = targets.reshape(-1)
+    # Per-token log-probs via log-sum-exp trick
+    log_probs = flat_logits - mx.logsumexp(flat_logits, axis=-1, keepdims=True)
+    per_token_ce = -log_probs[mx.arange(flat_targets.shape[0]), flat_targets]
+    # p = model probability of correct token = exp(-CE)
+    p = mx.exp(-mx.stop_gradient(per_token_ce))
+    weights = (1.0 - p) ** 2
+    return (weights * per_token_ce).mean()
+
+
 def get_artifact_bytes() -> int:
     return Path(__file__).stat().st_size
 
@@ -727,6 +745,13 @@ class MuonState:
         self.paths = paths
         self.bufs = {path: mx.zeros_like(_get_nested(params, path)) for path in paths}
         self.step = 0
+        if MUON_VR:
+            self.vr_bufs = {}
+            for path in paths:
+                w = _get_nested(params, path)
+                M, N = w.shape
+                vr_shape = (M, 1) if M >= N else (1, N)
+                self.vr_bufs[path] = mx.ones(vr_shape)
 
 
 def muon_apply(model, grads: dict, state: MuonState, lr: float, wd: float) -> None:
@@ -749,9 +774,28 @@ def muon_apply(model, grads: dict, state: MuonState, lr: float, wd: float) -> No
         update = zeropower_via_ns(update, MUON_NS_STEPS)
 
         M, N = param.shape
+        if MUON_VR:
+            # NorMuon-style: per-row/col RMS normalization AFTER NS5 (post-orthogonalization)
+            red_axis = -1 if M >= N else -2
+            red_dim_size = N if M >= N else M
+            v_mean = mx.mean(update * update, axis=red_axis, keepdims=True)
+            v_norm = mx.sqrt(mx.sum(v_mean) * red_dim_size + 1e-10)
+            vr_buf = state.vr_bufs[path]
+            vr_buf = MUON_VR_BETA2 * vr_buf + (1 - MUON_VR_BETA2) * v_mean
+            state.vr_bufs[path] = vr_buf
+            step_size = mx.rsqrt(vr_buf + 1e-10)
+            v_norm_new = mx.sqrt(mx.sum(v_mean * red_dim_size * step_size * step_size) + 1e-10)
+            update = update * step_size * (v_norm / v_norm_new)
+
         scale = math.sqrt(max(1.0, M / N))
 
-        _set_nested(params, path, param * (1.0 - lr * wd) - lr * scale * update)
+        # Split LR: late layers (>= MUON_LATE_START) use higher LR
+        if path[0] == "blocks" and path[1] >= MUON_LATE_START:
+            eff_lr = lr * MUON_LATE_LR_SCALE
+        else:
+            eff_lr = lr
+
+        _set_nested(params, path, param * (1.0 - eff_lr * wd) - eff_lr * scale * update)
         _set_nested(grads, path, mx.zeros_like(grad))  # prevent double-update via AdamW
 
     model.update(params)
@@ -967,8 +1011,9 @@ def main() -> None:
         print(f"muon: enabled, {len(muon_paths)} param groups")
     optimizer = optim.AdamW(learning_rate=LR, weight_decay=0.0 if USE_MUON else 0.04)
 
+    train_loss_fn = cross_entropy_p2 if P2_LOSS else cross_entropy
     loss_and_grad = nn.value_and_grad(
-        model, lambda mdl, inp, tgt: cross_entropy(mdl(inp), tgt)
+        model, lambda mdl, inp, tgt: train_loss_fn(mdl(inp), tgt)
     )
 
     # Data setup

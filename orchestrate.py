@@ -64,7 +64,9 @@ def _print_stream_line(line: str, prefix: str) -> None:
                 tool_name = block.get("name", "?")
                 inp = block.get("input", {})
                 # Extract the most useful detail from the tool input
-                detail = inp.get("command", inp.get("file_path", inp.get("pattern", "")))
+                detail = inp.get(
+                    "command", inp.get("file_path", inp.get("pattern", ""))
+                )
                 detail = str(detail)[:150]
                 print(f"[{prefix}] [{tool_name}] {detail}", flush=True)
                 _push_activity(prefix, tool_name, detail)
@@ -83,21 +85,27 @@ def _print_stream_line(line: str, prefix: str) -> None:
         cost = obj.get("cost_usd", 0)
         duration = obj.get("duration_ms", 0)
         duration_s = duration / 1000 if duration else 0
-        print(f"[{prefix}] [done] cost=${cost:.4f} duration={duration_s:.1f}s", flush=True)
+        print(
+            f"[{prefix}] [done] cost=${cost:.4f} duration={duration_s:.1f}s", flush=True
+        )
         _push_activity(prefix, "done", f"cost=${cost:.4f} duration={duration_s:.1f}s")
 
 
 def _push_activity(agent: str, action: str, detail: str) -> None:
     """Push an activity event to the dashboard (fire-and-forget)."""
     try:
-        _dashboard._post("activity", {
-            "agent": agent,
-            "action": action,
-            "detail": detail[:500],
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        _dashboard._post(
+            "activity",
+            {
+                "agent": agent,
+                "action": action,
+                "detail": detail[:500],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
     except Exception:
         pass
+
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -123,7 +131,11 @@ _MAX_RESTART_ATTEMPTS = 5
 _RESTART_BACKOFF_SECONDS = 5
 _AGENT_MODEL = os.environ.get("AGENT_MODEL", "global.anthropic.claude-opus-4-6-v1")
 _RESEARCH_QUEUE = Path("research_queue.jsonl")
-_RESEARCH_ON_DEMAND = os.environ.get("RESEARCH_ON_DEMAND", "1").lower() in ("1", "true", "yes")
+_RESEARCH_ON_DEMAND = os.environ.get("RESEARCH_ON_DEMAND", "1").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 # ---------------------------------------------------------------------------
 # Budget
@@ -132,6 +144,7 @@ _RESEARCH_ON_DEMAND = os.environ.get("RESEARCH_ON_DEMAND", "1").lower() in ("1",
 
 def _make_budget_manager():
     from compute.budget import BudgetManager
+
     return BudgetManager(
         total_credits=float(os.getenv(_ENV_TOTAL_CREDITS, _DEFAULT_CREDITS)),
         min_reserve=float(os.getenv(_ENV_MIN_RESERVE, _DEFAULT_RESERVE)),
@@ -163,12 +176,17 @@ def _launch_agent(prompt_path: Path, name: str) -> subprocess.Popen:
         )
 
     cmd = [
-        "quarry", "claude",
-        "-p", prompt_content + venv_note,
-        "--output-format", "stream-json",
+        "quarry",
+        "claude",
+        "-p",
+        prompt_content + venv_note,
+        "--output-format",
+        "stream-json",
         "--verbose",
-        "--model", _AGENT_MODEL,
-        "--permission-mode", "bypassPermissions",
+        "--model",
+        _AGENT_MODEL,
+        "--permission-mode",
+        "bypassPermissions",
     ]
 
     logs_dir = Path("logs")
@@ -273,10 +291,11 @@ def _clear_promotion_queue() -> None:
 def _handle_promotion(request: dict) -> None:
     """Process a single promotion request: preflight, budget, threshold, launch RunPod."""
     from compute.runpod_client import (
-        RunPodClient, RunPodError, PreflightError,
+        RunPodClient,
+        RunPodError,
+        PreflightError,
         verify_training_script,
     )
-    from compute import sync
     from compute.threshold import compute_promotion_threshold, check_adaptive_fallback
     from research.experiments import get_current_best_bpb
 
@@ -302,11 +321,11 @@ def _handle_promotion(request: dict) -> None:
         if candidate_bpb >= required_bpb:
             # Try adaptive fallback
             from research.experiments import _read_rows
+
             rows = _read_rows()
             fallback_window = int(os.getenv("PROMOTION_FALLBACK_WINDOW", "10"))
             row_dicts = [
-                {"tier": r.tier, "status": r.status, "val_bpb": r.val_bpb}
-                for r in rows
+                {"tier": r.tier, "status": r.status, "val_bpb": r.val_bpb} for r in rows
             ]
             relaxed = check_adaptive_fallback(
                 row_dicts, current_bpb, threshold, window=fallback_window
@@ -314,7 +333,9 @@ def _handle_promotion(request: dict) -> None:
             if relaxed and candidate_bpb < current_bpb * relaxed:
                 print(f"[orchestrate] Adaptive fallback: accepting {candidate_bpb:.4f}")
             else:
-                print(f"[orchestrate] BLOCKED by threshold: {candidate_bpb:.4f} >= {required_bpb:.4f}")
+                print(
+                    f"[orchestrate] BLOCKED by threshold: {candidate_bpb:.4f} >= {required_bpb:.4f}"
+                )
                 return
 
     # 3. Preflight verification — catch errors before spending credits
@@ -326,57 +347,163 @@ def _handle_promotion(request: dict) -> None:
 
     # 4. Launch RunPod
     run_id = f"runpod_{commit_hash[:_COMMIT_SHORT_LEN]}_{time.strftime('%m%d%H%M')}"
+
+    from compute.run_config import (
+        RunConfig,
+        format_checks,
+        has_failures,
+        validate_post_flight,
+        validate_pre_flight,
+    )
+
+    run_config = RunConfig()
+    pre_checks = validate_pre_flight(run_config)
+    print(f"[orchestrate] Pre-flight checks:\n{format_checks(pre_checks)}")
+    if has_failures(pre_checks):
+        print("[orchestrate] ABORTING: pre-flight checks failed")
+        _append_result(
+            run_id,
+            "runpod",
+            {},
+            0.0,
+            status="crash",
+            description="Pre-flight config validation failed",
+        )
+        return
+
     client = RunPodClient(
         api_key=os.environ["RUNPOD_API_KEY"],
         template_id=os.getenv("RUNPOD_TEMPLATE_ID", "y5cejece4j"),
     )
 
-    # Save a snapshot of the script being submitted
+    client._cleanup_all()
+
+    gpu_count = int(os.getenv("RUNPOD_GPU_COUNT", "8"))
+    gpu_type = os.getenv("RUNPOD_GPU_TYPE", "NVIDIA H100 80GB HBM3")
+
     run_dir = Path("runpod_results") / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     import shutil
+
     shutil.copy2("train_gpt.py", run_dir / "train_gpt.py")
 
+    _FORWARDED_ENV_KEYS = [
+        "TTT_ENABLED",
+        "TTT_EPOCHS",
+        "TTT_LR",
+        "TTT_CHUNK_TOKENS",
+        "TTT_FREEZE_BLOCKS",
+        "TTT_BATCH_SIZE",
+        "MUON_EQ",
+        "WARMDOWN_ITERS",
+        "LEAKY_SLOPE",
+        "EGGROLL_ENABLED",
+        "EGGROLL_BUDGET_SECS",
+        "EGGROLL_N_INDICES",
+        "RESID_MIX_X_INIT",
+        "RESID_MIX_X0_INIT",
+    ]
+    forwarded_env = {k: os.environ[k] for k in _FORWARDED_ENV_KEYS if k in os.environ}
+
+    use_http_flow = os.environ.get("RUNPOD_USE_HTTP", "0").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
     pod_id: str | None = None
-    try:
-        pod_id = client.create_pod()
-        ssh = client.wait_for_ready(pod_id)
-        sync.push_to_pod(ssh, ["train_gpt.py", "download_data.py", "data"])
-        t0 = time.time()
-        # Forward experiment-relevant env vars from caller's environment to the pod
-        _FORWARDED_ENV_KEYS = [
-            "TTT_ENABLED", "TTT_EPOCHS", "TTT_LR", "TTT_CHUNK_TOKENS",
-            "TTT_FREEZE_BLOCKS", "TTT_BATCH_SIZE", "MUON_EQ",
-            "WARMDOWN_ITERS", "LEAKY_SLOPE",
-            "EGGROLL_ENABLED", "EGGROLL_BUDGET_SECS", "EGGROLL_N_INDICES",
-            "RESID_MIX_X_INIT", "RESID_MIX_X0_INIT",
-        ]
-        forwarded_env = {k: os.environ[k] for k in _FORWARDED_ENV_KEYS if k in os.environ}
-        exit_code = sync.run_remote_training(ssh, run_id=run_id, env_vars=forwarded_env or None)
-        duration = time.time() - t0
-        sync.pull_from_pod(ssh, [f"logs/{run_id}.txt", "run.log"], local_dir=str(run_dir), optional=True)
-        if exit_code == 0:
-            sync.pull_from_pod(ssh, ["model.zst", "model.bin"], local_dir=str(run_dir), optional=True)
-    except RunPodError as exc:
-        print(f"[orchestrate] RunPod error ({type(exc).__name__}): {exc}")
-        if pod_id:
-            client.terminate_pod(pod_id)
-        cost = budget.record_run(run_id, 0)
-        _append_result(run_id, "runpod", {}, cost, status="crash")
-        return
-    finally:
-        if pod_id:
-            client.terminate_pod(pod_id)
+    if use_http_flow:
+        git_branch = subprocess.run(
+            ["git", "branch", "--show-current"], capture_output=True, text=True
+        ).stdout.strip()
+        try:
+            pod_id = client.create_training_pod(
+                run_id=run_id,
+                git_branch=git_branch or "main",
+                env_vars=forwarded_env or None,
+                gpu_count=gpu_count,
+                gpu_type=gpu_type,
+            )
+            t0 = time.time()
+            results = client.wait_for_results(pod_id)
+            duration = time.time() - t0
+            exit_code = results.get("exit_code", 1)
+
+            client.download_result_file(pod_id, "run.log", str(run_dir / "run.log"))
+            if exit_code == 0:
+                client.download_result_file(
+                    pod_id, "model.zst", str(run_dir / "model.zst")
+                )
+                client.download_result_file(
+                    pod_id, "model.bin", str(run_dir / "model.bin")
+                )
+        except RunPodError as exc:
+            print(f"[orchestrate] RunPod error ({type(exc).__name__}): {exc}")
+            if pod_id:
+                client.terminate_pod(pod_id)
+            cost = budget.record_run(run_id, 0, gpu_count=gpu_count)
+            _append_result(run_id, "runpod", {}, cost, status="crash")
+            return
+        finally:
+            if pod_id:
+                client.terminate_pod(pod_id)
+    else:
+        from compute import sync
+
+        try:
+            pod_id = client.create_pod(gpu_count=gpu_count, gpu_type=gpu_type)
+            ssh = client.wait_for_ready(pod_id)
+            sync.push_to_pod(ssh, ["train_gpt.py", "download_data.py", "data"])
+            t0 = time.time()
+            exit_code = sync.run_remote_training(
+                ssh, run_id=run_id, env_vars=forwarded_env or None
+            )
+            duration = time.time() - t0
+            sync.pull_from_pod(
+                ssh,
+                [f"logs/{run_id}.txt", "run.log"],
+                local_dir=str(run_dir),
+                optional=True,
+            )
+            if exit_code == 0:
+                sync.pull_from_pod(
+                    ssh,
+                    ["model.zst", "model.bin"],
+                    local_dir=str(run_dir),
+                    optional=True,
+                )
+        except RunPodError as exc:
+            print(f"[orchestrate] RunPod error ({type(exc).__name__}): {exc}")
+            if pod_id:
+                client.terminate_pod(pod_id)
+            cost = budget.record_run(run_id, 0, gpu_count=gpu_count)
+            _append_result(run_id, "runpod", {}, cost, status="crash")
+            return
+        finally:
+            if pod_id:
+                client.terminate_pod(pod_id)
 
     if exit_code != 0:
         print(f"[orchestrate] Training failed with exit code {exit_code}")
-        cost = budget.record_run(run_id, duration)
+        cost = budget.record_run(run_id, duration, gpu_count=gpu_count)
         _append_result(run_id, "runpod", {}, cost, status="crash")
         return
 
     result = parse_run_log(str(run_dir / "run.log"))
-    cost = budget.record_run(run_id, duration)
-    _append_result(run_id, "runpod", result, cost)
+    cost = budget.record_run(run_id, duration, gpu_count=gpu_count)
+
+    run_log_path = str(run_dir / "run.log")
+    post_checks = validate_post_flight(run_config, run_log_path)
+    print(f"[orchestrate] Post-flight checks:\n{format_checks(post_checks)}")
+
+    status = "keep"
+    if has_failures(post_checks):
+        status = "flagged"
+        print(
+            "[orchestrate] WARNING: post-flight checks have failures — results may be invalid"
+        )
+
+    _append_result(run_id, "runpod", result, cost, status=status)
     print(f"[orchestrate] Done. val_bpb={result.get(_KEY_VAL_BPB)} cost=${cost:.2f}")
 
 
@@ -403,8 +530,13 @@ def parse_run_log(log_path: str) -> dict:
 
 
 def _append_result(
-    run_id: str, tier: str, result: dict, cost: float,
-    status: str = "keep", source_item: str = "",
+    run_id: str,
+    tier: str,
+    result: dict,
+    cost: float,
+    status: str = "keep",
+    source_item: str = "",
+    description: str = "",
 ) -> None:
     if not _RESULTS_TSV.exists():
         _RESULTS_TSV.write_text(
@@ -414,21 +546,23 @@ def _append_result(
         val_bpb = result.get(_KEY_VAL_BPB, "")
         artifact_bytes = result.get(_KEY_ARTIFACT_BYTES, "")
         f.write(
-            f"{run_id}\t{tier}\t{val_bpb}\t{artifact_bytes}\t\t{status}\tyes\t{cost:.2f}\t\t{source_item}\n"
+            f"{run_id}\t{tier}\t{val_bpb}\t{artifact_bytes}\t\t{status}\tyes\t{cost:.2f}\t{description}\t{source_item}\n"
         )
-    _dashboard.push_experiment({
-        "id": run_id,
-        "tier": tier,
-        "val_bpb": result.get(_KEY_VAL_BPB),
-        "artifact_bytes": result.get(_KEY_ARTIFACT_BYTES),
-        "memory_gb": None,
-        "status": status,
-        "promoted": tier == "runpod",
-        "cost_usd": cost,
-        "description": "",
-        "source_item": source_item,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
+    _dashboard.push_experiment(
+        {
+            "id": run_id,
+            "tier": tier,
+            "val_bpb": result.get(_KEY_VAL_BPB),
+            "artifact_bytes": result.get(_KEY_ARTIFACT_BYTES),
+            "memory_gb": None,
+            "status": status,
+            "promoted": tier == "runpod",
+            "cost_usd": cost,
+            "description": description,
+            "source_item": source_item,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
 
 
 def print_budget_status() -> None:
@@ -451,10 +585,12 @@ def promote_to_runpod(commit_hash: str, dry_run: bool = False) -> None:
     if dry_run:
         print("[dry-run] Would submit to RunPod. No credits spent.")
         return
-    _handle_promotion({
-        "source_experiment": commit_hash,
-        "message": f"Manual promotion of {commit_hash}",
-    })
+    _handle_promotion(
+        {
+            "source_experiment": commit_hash,
+            "message": f"Manual promotion of {commit_hash}",
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -469,6 +605,7 @@ def _read_sota_bpb() -> float:
         for line in text.splitlines():
             if "sota" in line.lower() and "bpb" in line.lower():
                 import re
+
                 match = re.search(r"(\d+\.\d+)", line)
                 if match:
                     return float(match.group(1))
@@ -479,11 +616,13 @@ def _read_sota_bpb() -> float:
 
 def _read_pipeline_counts() -> dict:
     """Count lines in each pipeline cache file."""
+
     def _count_lines(path: str) -> int:
         try:
             return sum(1 for _ in open(path))
         except FileNotFoundError:
             return 0
+
     return {
         "fetched": _count_lines("raw_cache.jsonl"),
         "graded": _count_lines("graded_cache.jsonl"),
@@ -500,36 +639,63 @@ def _count_file_lines(path: Path) -> int:
 
 
 def _sync_new_results_to_dashboard(last_count: int) -> int:
-    """Push any new lines in results.tsv to the dashboard. Returns new line count."""
+    """Push any new or edited lines in results.tsv to the dashboard. Returns new line count."""
     current_count = _count_file_lines(_RESULTS_TSV)
-    if current_count <= last_count:
+    if current_count <= 1:
         return last_count
     try:
         with open(_RESULTS_TSV) as f:
             header = f.readline().strip().split("\t")
             all_lines = f.readlines()
-        # Push only new lines (skip header which is line 0)
-        new_lines = all_lines[max(0, last_count - 1):]
-        for line in new_lines:
-            cols = line.strip().split("\t")
+
+        import hashlib
+
+        content_hash = hashlib.md5("".join(all_lines).encode()).hexdigest()
+        cache_attr = "_results_hash"
+        prev_hash = getattr(_sync_new_results_to_dashboard, cache_attr, None)
+        if prev_hash == content_hash and current_count == last_count:
+            return last_count
+        setattr(_sync_new_results_to_dashboard, cache_attr, content_hash)
+
+        for line in all_lines:
+            raw = line.strip()
+            if not raw:
+                continue
+            if "\t" in raw:
+                cols = raw.split("\t")
+            elif "\\t" in raw:
+                cols = raw.split("\\t")
+            else:
+                continue
             if len(cols) < 8:
                 continue
             row = dict(zip(header, cols))
-            _dashboard.push_experiment({
-                "id": row.get("commit", ""),
-                "tier": row.get("tier", "local"),
-                "val_bpb": float(row["val_bpb"]) if row.get("val_bpb") and row["val_bpb"] not in ("", "n/a") else None,
-                "artifact_bytes": int(row["artifact_bytes"]) if row.get("artifact_bytes") and row["artifact_bytes"] not in ("", "0") else None,
-                "memory_gb": None,
-                "status": row.get("status", "keep"),
-                "promoted": row.get("promoted", "no") == "yes",
-                "cost_usd": float(row.get("cost_usd", "0") or "0"),
-                "description": row.get("description", ""),
-                "source_item": row.get("source_item", ""),
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            })
-        if new_lines:
-            print(f"[orchestrate] Synced {len(new_lines)} new experiment(s) to dashboard")
+            _dashboard.push_experiment(
+                {
+                    "id": row.get("commit", ""),
+                    "tier": row.get("tier", "local"),
+                    "val_bpb": float(row["val_bpb"])
+                    if row.get("val_bpb") and row["val_bpb"] not in ("", "n/a")
+                    else None,
+                    "artifact_bytes": int(row["artifact_bytes"])
+                    if row.get("artifact_bytes")
+                    and row["artifact_bytes"] not in ("", "0")
+                    else None,
+                    "memory_gb": None,
+                    "status": row.get("status", "keep"),
+                    "promoted": row.get("promoted", "no") == "yes",
+                    "cost_usd": float(row.get("cost_usd", "0") or "0"),
+                    "description": row.get("description", ""),
+                    "source_item": row.get("source_item", ""),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+        if current_count != last_count:
+            print(
+                f"[orchestrate] Synced {current_count - last_count} new experiment(s) to dashboard"
+            )
+        else:
+            print("[orchestrate] Re-synced edited experiments to dashboard")
     except Exception as e:
         print(f"[orchestrate] Dashboard sync error: {e}")
     return current_count
@@ -548,25 +714,37 @@ def _sync_new_research_to_dashboard(last_count: int) -> int:
         items = []
         for line in new_lines:
             item = json.loads(line)
-            items.append({
-                "id": item.get("id", ""),
-                "score": item.get("score", 0),
-                "tier": item.get("tier", "C"),
-                "bpb_impact": item.get("score_breakdown", {}).get("bpb_impact", 0),
-                "size_compat": item.get("score_breakdown", {}).get("size_compatibility", 0),
-                "time_compat": item.get("score_breakdown", {}).get("time_compatibility", 0),
-                "implement": item.get("score_breakdown", {}).get("implementability", 0),
-                "novelty": item.get("score_breakdown", {}).get("novelty", 0),
-                "summary": item.get("agent_summary", ""),
-                "flags": item.get("flags", []),
-                "verified": False,
-                "graded_at": item.get("graded_at", datetime.now(timezone.utc).isoformat()),
-                "verified_at": None,
-            })
+            items.append(
+                {
+                    "id": item.get("id", ""),
+                    "score": item.get("score", 0),
+                    "tier": item.get("tier", "C"),
+                    "bpb_impact": item.get("score_breakdown", {}).get("bpb_impact", 0),
+                    "size_compat": item.get("score_breakdown", {}).get(
+                        "size_compatibility", 0
+                    ),
+                    "time_compat": item.get("score_breakdown", {}).get(
+                        "time_compatibility", 0
+                    ),
+                    "implement": item.get("score_breakdown", {}).get(
+                        "implementability", 0
+                    ),
+                    "novelty": item.get("score_breakdown", {}).get("novelty", 0),
+                    "summary": item.get("agent_summary", ""),
+                    "flags": item.get("flags", []),
+                    "verified": False,
+                    "graded_at": item.get(
+                        "graded_at", datetime.now(timezone.utc).isoformat()
+                    ),
+                    "verified_at": None,
+                }
+            )
         if items:
             for i in range(0, len(items), 10):
-                _dashboard.push_research(items[i:i+10])
-            print(f"[orchestrate] Synced {len(items)} new research item(s) to dashboard")
+                _dashboard.push_research(items[i : i + 10])
+            print(
+                f"[orchestrate] Synced {len(items)} new research item(s) to dashboard"
+            )
     except Exception as e:
         print(f"[orchestrate] Dashboard research sync error: {e}")
     return current_count
@@ -575,7 +753,11 @@ def _sync_new_research_to_dashboard(last_count: int) -> int:
 def _run_supervisor() -> None:
     """Main loop: spawn agents, monitor health, poll promotion queue."""
     experiment_proc = _launch_agent(_EXPERIMENT_AGENT_PROMPT, "experiment-agent")
-    research_proc = None if _RESEARCH_ON_DEMAND else _launch_agent(_RESEARCH_AGENT_PROMPT, "research-agent")
+    research_proc = (
+        None
+        if _RESEARCH_ON_DEMAND
+        else _launch_agent(_RESEARCH_AGENT_PROMPT, "research-agent")
+    )
     _research_queue_lines = _count_file_lines(_RESEARCH_QUEUE)
 
     experiment_restarts = 0
@@ -592,8 +774,10 @@ def _run_supervisor() -> None:
     signal.signal(signal.SIGINT, _cleanup)
     atexit.register(lambda: _cleanup())
 
-    print("[orchestrate] Supervisor running. Polling promotion queue every "
-          f"{_POLL_INTERVAL_SECONDS}s.")
+    print(
+        "[orchestrate] Supervisor running. Polling promotion queue every "
+        f"{_POLL_INTERVAL_SECONDS}s."
+    )
 
     _heartbeat_counter = 0
     _results_line_count = _count_file_lines(_RESULTS_TSV)
@@ -603,37 +787,55 @@ def _run_supervisor() -> None:
         "strategy": Path("strategy.md"),
         "technique_map": Path("technique_map.json"),
     }
-    _doc_mtimes = {k: v.stat().st_mtime if v.exists() else 0 for k, v in _DOC_FILES.items()}
+    _doc_mtimes = {
+        k: v.stat().st_mtime if v.exists() else 0 for k, v in _DOC_FILES.items()
+    }
     _BUDGET_FILE = Path("budget.json")
     _budget_mtime = _BUDGET_FILE.stat().st_mtime if _BUDGET_FILE.exists() else 0
 
     while True:
         # Health check: restart agents that have exited
         if not _check_agent_alive(experiment_proc):
-            rc = getattr(experiment_proc, '_exit_code', -1)
+            rc = getattr(experiment_proc, "_exit_code", -1)
             if rc != 0:
                 experiment_restarts += 1
             if experiment_restarts > _MAX_RESTART_ATTEMPTS:
-                print("[orchestrate] Experiment agent exceeded max crash restarts. Stopping.")
+                print(
+                    "[orchestrate] Experiment agent exceeded max crash restarts. Stopping."
+                )
                 _cleanup()
-            label = "cycle complete" if rc == 0 else f"crashed ({experiment_restarts}/{_MAX_RESTART_ATTEMPTS})"
+            label = (
+                "cycle complete"
+                if rc == 0
+                else f"crashed ({experiment_restarts}/{_MAX_RESTART_ATTEMPTS})"
+            )
             print(f"[orchestrate] Restarting experiment-agent ({label})...")
             time.sleep(_RESTART_BACKOFF_SECONDS if rc != 0 else 5)
-            experiment_proc = _launch_agent(_EXPERIMENT_AGENT_PROMPT, "experiment-agent")
+            experiment_proc = _launch_agent(
+                _EXPERIMENT_AGENT_PROMPT, "experiment-agent"
+            )
 
         if research_proc is not None and not _check_agent_alive(research_proc):
-            rc = getattr(research_proc, '_exit_code', -1)
+            rc = getattr(research_proc, "_exit_code", -1)
             if _RESEARCH_ON_DEMAND:
                 label = "cycle complete" if rc == 0 else "crashed"
-                print(f"[orchestrate] Research agent finished ({label}). Returning to experiment-only.")
+                print(
+                    f"[orchestrate] Research agent finished ({label}). Returning to experiment-only."
+                )
                 research_proc = None
             else:
                 if rc != 0:
                     research_restarts += 1
                 if research_restarts > _MAX_RESTART_ATTEMPTS:
-                    print("[orchestrate] Research agent exceeded max crash restarts. Stopping.")
+                    print(
+                        "[orchestrate] Research agent exceeded max crash restarts. Stopping."
+                    )
                     _cleanup()
-                label = "cycle complete" if rc == 0 else f"crashed ({research_restarts}/{_MAX_RESTART_ATTEMPTS})"
+                label = (
+                    "cycle complete"
+                    if rc == 0
+                    else f"crashed ({research_restarts}/{_MAX_RESTART_ATTEMPTS})"
+                )
                 print(f"[orchestrate] Restarting research-agent ({label})...")
                 time.sleep(_RESTART_BACKOFF_SECONDS if rc != 0 else 5)
                 research_proc = _launch_agent(_RESEARCH_AGENT_PROMPT, "research-agent")
@@ -641,20 +843,26 @@ def _run_supervisor() -> None:
         _heartbeat_counter += 1
         if _heartbeat_counter % 10 == 0:
             _agent_statuses = [
-                    {
-                        "agent": "experiment",
-                        "status": "running" if _check_agent_alive(experiment_proc) else "crashed",
-                        "last_activity": datetime.now(timezone.utc).isoformat(),
-                        "restart_count": experiment_restarts,
-                    },
-                ]
+                {
+                    "agent": "experiment",
+                    "status": "running"
+                    if _check_agent_alive(experiment_proc)
+                    else "crashed",
+                    "last_activity": datetime.now(timezone.utc).isoformat(),
+                    "restart_count": experiment_restarts,
+                },
+            ]
             if research_proc is not None:
-                _agent_statuses.append({
+                _agent_statuses.append(
+                    {
                         "agent": "research",
-                        "status": "running" if _check_agent_alive(research_proc) else "crashed",
+                        "status": "running"
+                        if _check_agent_alive(research_proc)
+                        else "crashed",
                         "last_activity": datetime.now(timezone.utc).isoformat(),
                         "restart_count": research_restarts,
-                    })
+                    }
+                )
             _dashboard.push_heartbeat(
                 statuses=_agent_statuses,
                 sota_bpb=_read_sota_bpb(),
@@ -676,12 +884,14 @@ def _run_supervisor() -> None:
             if mtime > _budget_mtime:
                 try:
                     data = json.loads(_BUDGET_FILE.read_text())
-                    _dashboard.push_budget({
-                        "total_credits": data.get("total_credits", 0),
-                        "spent": data.get("spent", 0),
-                        "min_reserve": data.get("min_reserve", 0),
-                        "updated_at": datetime.now(timezone.utc).isoformat(),
-                    })
+                    _dashboard.push_budget(
+                        {
+                            "total_credits": data.get("total_credits", 0),
+                            "spent": data.get("spent", 0),
+                            "min_reserve": data.get("min_reserve", 0),
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                    )
                     _budget_mtime = mtime
                 except Exception:
                     pass
@@ -690,7 +900,9 @@ def _run_supervisor() -> None:
         if _RESEARCH_ON_DEMAND and research_proc is None:
             new_lines = _count_file_lines(_RESEARCH_QUEUE)
             if new_lines > _research_queue_lines:
-                print(f"[orchestrate] Research queue has {new_lines - _research_queue_lines} new request(s). Spawning research agent...")
+                print(
+                    f"[orchestrate] Research queue has {new_lines - _research_queue_lines} new request(s). Spawning research agent..."
+                )
                 _research_queue_lines = new_lines
                 research_proc = _launch_agent(_RESEARCH_AGENT_PROMPT, "research-agent")
 
@@ -720,8 +932,12 @@ def main() -> None:
     _store_true = "store_true"
 
     # Direct commands (no agent needed)
-    parser.add_argument("--promote", type=str, metavar="COMMIT_HASH",
-                        help="Manually promote a commit to RunPod")
+    parser.add_argument(
+        "--promote",
+        type=str,
+        metavar="COMMIT_HASH",
+        help="Manually promote a commit to RunPod",
+    )
     parser.add_argument("--dry-run", action=_store_true)
     parser.add_argument("--budget-status", action=_store_true)
     parser.add_argument("--threshold-status", action=_store_true)
@@ -743,10 +959,16 @@ def main() -> None:
     parser.add_argument("--seq-len", type=int, default=512)
 
     # Research commands (still useful for manual runs)
-    parser.add_argument("--refresh", action=_store_true,
-                        help="Run a full research refresh (all sources)")
-    parser.add_argument("--refresh-fast", action=_store_true,
-                        help="Run a fast refresh (GitHub + Tavily)")
+    parser.add_argument(
+        "--refresh",
+        action=_store_true,
+        help="Run a full research refresh (all sources)",
+    )
+    parser.add_argument(
+        "--refresh-fast",
+        action=_store_true,
+        help="Run a fast refresh (GitHub + Tavily)",
+    )
     parser.add_argument("--refresh-hours", type=int, default=6)
     parser.add_argument("--top-n", type=int, default=12)
 
@@ -758,9 +980,11 @@ def main() -> None:
         promote_to_runpod(args.promote, dry_run=args.dry_run)
     elif args.critique:
         from research.critic import run_critique
+
         run_critique()
     elif args.tournament:
         from compute.tournament import run_tournament, TournamentConfig
+
         config = TournamentConfig(
             candidates=args.candidates,
             survivors=args.survivors,
@@ -784,14 +1008,18 @@ def main() -> None:
     elif args.threshold_status:
         from compute.threshold import compute_promotion_threshold
         from research.experiments import get_current_best_bpb
+
         current = get_current_best_bpb()
         threshold = compute_promotion_threshold(current, sota=current)
         required_bpb = current * threshold
         print(f"  Current best: {current:.4f} bpb")
-        print(f"  Threshold ratio: {threshold:.4f} ({1-threshold:.2%} improvement required)")
+        print(
+            f"  Threshold ratio: {threshold:.4f} ({1 - threshold:.2%} improvement required)"
+        )
         print(f"  Candidate must beat: {required_bpb:.4f} bpb")
     elif args.check_constraints:
         from compute.constraints import feasibility_report, print_report
+
         report = feasibility_report(
             params=args.params,
             bits=args.bits,
@@ -802,6 +1030,7 @@ def main() -> None:
         print_report(report)
     elif args.refresh:
         import asyncio
+
         since_hours = int(os.getenv("SINCE_HOURS", "48"))
 
         async def _do_refresh():
@@ -825,6 +1054,7 @@ def main() -> None:
         asyncio.run(_do_refresh())
     elif args.refresh_fast:
         import asyncio
+
         since_hours = int(os.getenv("SINCE_HOURS", "48"))
 
         async def _do_fast():

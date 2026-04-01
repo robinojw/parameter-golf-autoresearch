@@ -33,8 +33,13 @@ You do NOT interact with RunPod directly. Tag a result `PROMOTE` to queue it.
 **Pod execution flow (git-clone + HTTP, no SSH):**
 RunPod direct TCP is broken. Pods now clone the repo from GitHub and serve results via HTTP proxy.
 This means `train_gpt.py` MUST be committed and pushed before every promote.
-The startup script: clone repo → install zstandard → detect/download data → torchrun → GPTQ → serve results via HTTP on port 18080.
+The startup script: clone repo → install zstandard + flash-attn v3 → detect/download data → torchrun → GPTQ → serve results via HTTP on port 18080.
 Orchestrator polls `https://{pod_id}-18080.proxy.runpod.net/results.json` for completion, then downloads run.log/model files.
+
+**Flash Attention 3 (CRITICAL — 18% more training steps):**
+The competition SOTA runs use FA3 (~86ms/step, ~6930 steps in 600s). Without FA3, we get FA2 (~102ms/step, ~5850 steps in 600s).
+The 1080 extra steps from FA3 account for the 0.06 bpb gap vs SOTA. FA3 is now installed in the pod startup script.
+If the run log shows `sdp_backends:...flash=True` and step_avg < 90ms, FA3 is active. If step_avg > 100ms, FA3 failed to install.
 
 **GPU count is configurable:**
 `RUNPOD_GPU_COUNT=1` (current default) — $2.69/hr, use for iteration and debugging.
@@ -53,6 +58,16 @@ Research shows r=0.86 correlation between step-1000 val_bpb and final val_bpb (a
 `EARLY_EVAL_STEP=1000` — forces a validation pass at step 1000 regardless of VAL_LOSS_EVERY.
 `EARLY_ABORT_BPB=0` (disabled by default) — if set, aborts training when step-1000 val_bpb exceeds threshold.
 Use this to kill bad runs after ~90s instead of burning 10 minutes. Calibrate threshold after a few runs.
+
+**Automated pre-flight and post-flight validation (compute/run_config.py):**
+Every H100 promotion now runs automated checks BEFORE and AFTER training:
+- Pre-flight: validates GPU count, HTTP flow, tokens, code size BEFORE spending $5-8 on a pod
+- Post-flight: validates FA3 active, shard count, step time, artifact size, bpb range AFTER training
+- If pre-flight has FAIL status, promotion is ABORTED (saves the $5-8)
+- If post-flight has FAIL status, result is marked "flagged" in results.tsv
+- Check the orchestrator output for `Pre-flight checks:` and `Post-flight checks:` blocks
+- Expected step_avg with FA3: <95ms. If >100ms, FA3 likely failed to install.
+- Expected steps with FA3: >6500 in 600s. If <6000, something is wrong.
 
 **zstd API compatibility:**
 Pod runs Python 3.12 (`zstandard` pip package uses `max_output_size`).
