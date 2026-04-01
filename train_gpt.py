@@ -30,13 +30,29 @@ try:
 except ImportError:
     flash_attn_3_func = None
 try:
-    import zstandard as _zstd
+    import brotli as _brotli
 
-    _COMPRESSOR = "zstd"
+    _COMPRESSOR = "brotli"
 except ImportError:
-    import zlib as _zlib
+    # Auto-install brotli on pod (needed for artifact compression)
+    try:
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "-q", "brotli",
+             "--break-system-packages"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        import brotli as _brotli
 
-    _COMPRESSOR = "zlib"
+        _COMPRESSOR = "brotli"
+    except Exception:
+        try:
+            import zstandard as _zstd
+
+            _COMPRESSOR = "zstd"
+        except ImportError:
+            import zlib as _zlib
+
+            _COMPRESSOR = "zlib"
 
 if os.environ.get("TORCHDYNAMO_SUPPRESS_ERRORS", "0") == "1":
     import torch._dynamo
@@ -55,7 +71,7 @@ def _ensure_data() -> tuple[str, str]:
     _HF_PREFIX = "datasets"
     _VARIANT = "fineweb10B_sp1024"
     _TOKENIZER_FILES = ["fineweb_1024_bpe.model", "fineweb_1024_bpe.vocab"]
-    _N_TRAIN_SHARDS = 32  # enough for coprime loader
+    _N_TRAIN_SHARDS = 80
     _N_VAL_SHARDS = 1
 
     # Candidate data directories (check in order)
@@ -264,6 +280,7 @@ class Hyperparameters:
     ngram_entropy_shift = bool(int(os.environ.get("NGRAM_ENTROPY_SHIFT", "0")))
     ngram_order_mults_str = os.environ.get("NGRAM_ORDER_MULTS", "")
     cubric_cadence = int(os.environ.get("CUBRIC_CADENCE", 0))
+    p2_loss = bool(int(os.environ.get("P2_LOSS", "1")))  # P2 focal loss (PR #1180)
     skip_final_eval = bool(int(os.environ.get("SKIP_FINAL_EVAL", "0")))
     post_ema_diagnostic = bool(int(os.environ.get("POST_EMA_DIAGNOSTIC", "1")))
     compile_enabled = bool(int(os.environ.get("COMPILE_ENABLED", "1")))
@@ -1402,6 +1419,7 @@ class GPT(nn.Module):
         self.tied_embed_init_std = tied_embed_init_std
         self.logit_softcap = logit_softcap
         self.value_residual = value_residual
+        self.p2_loss = bool(int(os.environ.get("P2_LOSS", "1")))
         self.mtp_num_heads = mtp_num_heads
         self.mtp_loss_weight = mtp_loss_weight
         self.tok_emb = nn.Embedding(vocab_size, model_dim)
@@ -1590,7 +1608,14 @@ class GPT(nn.Module):
                 raise RuntimeError("lm_head is required when tie_embeddings=False")
             logits_proj = self.lm_head(x_flat)
         logits = self.logit_softcap * torch.tanh(logits_proj / self.logit_softcap)
-        if (
+        if self.training and self.p2_loss:
+            # P2 focal loss (PR #1180): weight = (1 - p)^2 where p = model confidence
+            per_tok_loss = F.cross_entropy(logits.float(), targets, reduction="none")
+            with torch.no_grad():
+                p = torch.exp(-per_tok_loss)  # model confidence for correct token
+                w = (1.0 - p).square()  # focus on uncertain tokens
+            main_loss = (per_tok_loss * w).sum() / w.sum()
+        elif (
             hasattr(self, "_ngram_tracker")
             and self._ngram_tracker is not None
             and self.training
@@ -2214,12 +2239,16 @@ def eval_val_sliding(
 
 
 def _compress(data: bytes) -> bytes:
+    if _COMPRESSOR == "brotli":
+        return _brotli.compress(data, quality=11)
     if _COMPRESSOR == "zstd":
         return _zstd.ZstdCompressor(level=22).compress(data)
     return _zlib.compress(data, level=9)
 
 
 def _decompress(data: bytes) -> bytes:
+    if _COMPRESSOR == "brotli":
+        return _brotli.decompress(data)
     if _COMPRESSOR == "zstd":
         try:
             return _zstd.ZstdDecompressor().decompress(data, max_length=2**33)
@@ -3087,6 +3116,7 @@ def main() -> None:
     # --- INT6 GPTQ POST-TRAINING QUANTIZATION ---
     if args.gptq_enabled:
         t_gptq_start = time.perf_counter()
+        quant_path = "final_model.int6.br" if _COMPRESSOR == "brotli" else "final_model.int6.zst"
         log0(
             f"gptq:start compressor={_COMPRESSOR} calib_batches={args.gptq_calib_batches} clip_range={args.gptq_clip_range}"
         )
@@ -3120,7 +3150,6 @@ def main() -> None:
             )
             # Serialize + compress
             compressed = pack_and_compress_quant_obj(quant_obj)
-            quant_path = "final_model.int6.zst"
             with open(quant_path, "wb") as f:
                 f.write(compressed)
             total_artifact = len(compressed) + code_bytes
@@ -3131,7 +3160,7 @@ def main() -> None:
         if distributed:
             dist.barrier()
         # All ranks: load quantized weights and restore model for final eval
-        with open("final_model.int6.zst", "rb") as f:
+        with open(quant_path, "rb") as f:
             compressed_disk = f.read()
         quant_obj_disk = load_and_decompress_quant_obj(compressed_disk)
         dequant_state = dequantize_state_dict_int6(quant_obj_disk)
