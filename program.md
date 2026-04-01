@@ -224,7 +224,7 @@ Already on the leaderboard — build on these, don't repeat them:
 - [dead_end] turbo_muon (bpb 1.1091)
   - [active] parallel_muon_+_adamw (bpb 1.1099)
   - [promising] param_banking (bpb 1.1091)
-  - [active] normuon_vr (bpb 9.349 local, -0.022 vs MuonEq baseline)
+  - [marginal] normuon_vr (bpb 1.1597 on H100, -0.0002 vs prior best. Local -0.022 did not translate)
 - [active] engramlite (bpb 1.1091)
 - [proven] bigramhash (bpb 1.1099)
 - [active] coprime_loader (bpb 1.1099)
@@ -311,6 +311,8 @@ Already on the leaderboard — build on these, don't repeat them:
 - [runpod] Brotli-11 + P2 focal loss (buggy normalization). val_bpb=1.2424 (REGRESSION). Artifact 11.63MB (brotli saves 4.8MB). P2 normalization bug: w.sum() division. — val_bpb=1.2424, status=keep (cost=$5.99)
 - [runpod] P2 focal loss (fixed mean normalization) + brotli-11 + INT5 GPTQ. val_bpb=1.2377 (still REGRESSION from 1.1705 baseline, +0.067). P2 loss CONFIRMED HARMFUL at H100 5800-step budget — downweights confident tokens, reduces effective gradient during warmdown. Artifact 11.63MB (under 16MB, brotli works). Conclusion: disable P2 loss, keep brotli-11. — val_bpb=1.2377, status=keep (cost=$5.99)
 - [local] NorMuon VR (Adafactor-style variance reduction AFTER NS5): MUON_VR=1 MUON_VR_BETA2=0.95. val_bpb 9.349 vs MuonEq baseline 9.371 (-0.022). Train loss 6.78→6.44. Complementary to MuonEq RC (which equilibrates BEFORE NS5). Ported to train_gpt.py for H100. — val_bpb=9.3488, status=keep (cost=$0.00)
+- [runpod] NorMuon VR CRASH (commit 603472d): VR buffer shape mismatch during warmup — bufs sized for shard, but warmup uses non-sharded path. Fixed in c1fbd65 by gating on `sharded=True`. — val_bpb=0.0000, status=crash (cost=$1.37)
+- [runpod] NorMuon VR on H100 (commit c1fbd65): MUON_VR=1 + MuonEq RC + QK_GAIN=4.0 + SLOT lr=0.005 steps=8 + GPTQ int6 + brotli-11. val_bpb=1.1597 (SLOT), 1.1646 (sliding), 1.1820 (post-EMA). VR contribution: -0.0002 vs prior 1.1599 (MARGINAL). Local signal (-0.022) did not translate to H100 scale. 5823 steps in 600s. Artifact 15.30MB. — val_bpb=1.1597, status=keep (cost=$7.53)
 <!-- EXPERIMENTS_END -->
 
 ## Competitor Scores
