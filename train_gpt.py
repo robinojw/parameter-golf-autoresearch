@@ -2795,8 +2795,8 @@ def eggroll_refine(
     val_seqs = min(16, (val_tokens.numel() - 1) // args.eval_seq_len)
     if val_seqs < 1:
         return 0
-    val_x = val_tokens[: val_seqs * args.eval_seq_len].reshape(val_seqs, args.eval_seq_len).to(device)
-    val_y = val_tokens[1 : val_seqs * args.eval_seq_len + 1].reshape(val_seqs, args.eval_seq_len).to(device)
+    val_x = val_tokens[: val_seqs * args.eval_seq_len].reshape(val_seqs, args.eval_seq_len).to(device=device, dtype=torch.int64)
+    val_y = val_tokens[1 : val_seqs * args.eval_seq_len + 1].reshape(val_seqs, args.eval_seq_len).to(device=device, dtype=torch.int64)
 
     # Load dequantized model once as baseline
     state = dequantize_state_dict_int6(quant_obj)
