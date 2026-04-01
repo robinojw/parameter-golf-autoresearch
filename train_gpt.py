@@ -280,7 +280,7 @@ class Hyperparameters:
     ngram_entropy_shift = bool(int(os.environ.get("NGRAM_ENTROPY_SHIFT", "0")))
     ngram_order_mults_str = os.environ.get("NGRAM_ORDER_MULTS", "")
     cubric_cadence = int(os.environ.get("CUBRIC_CADENCE", 0))
-    p2_loss = bool(int(os.environ.get("P2_LOSS", "1")))  # P2 focal loss (PR #1180)
+    p2_loss = bool(int(os.environ.get("P2_LOSS", "0")))  # P2 focal loss disabled — REGRESSION at H100 scale (+0.067 bpb)
     skip_final_eval = bool(int(os.environ.get("SKIP_FINAL_EVAL", "0")))
     post_ema_diagnostic = bool(int(os.environ.get("POST_EMA_DIAGNOSTIC", "1")))
     compile_enabled = bool(int(os.environ.get("COMPILE_ENABLED", "1")))

@@ -42,7 +42,7 @@ You do NOT interact with RunPod directly. Tag a result `PROMOTE` to queue it.
 
 ## Metric
 `val_bpb` (bits per byte) on FineWeb. Lower is better.
-**Merged SOTA: 1.1147 bpb (PR #1019). Best unmerged: 1.0781 (PR #672, 30-epoch cosine TTT on PR #518 stack). Second unmerged: 1.0806 (PR #1143, Scylla+TTT). Third unmerged: 1.0962 (PR #1176, bigbag: QK-Gain 4.0 + XSA-11 + Muon-TTT + SLOT). Also: PR #1172 (dexhunter, 1.1015, SLOT+Split-LR+GPTQ+XSA-all). Baseline: 1.2244 bpb.**
+**Merged SOTA: 1.1147 bpb (PR #1019). Best unmerged: 1.0577 (PR #1180, estesryan: P2 loss + conv token mixer + wallclock LR warmdown). Second unmerged: 1.0781 (PR #672, 30-epoch cosine TTT on PR #518 stack). Third unmerged: 1.0806 (PR #1143, Scylla+TTT). Fourth unmerged: 1.0962 (PR #1176, bigbag: QK-Gain 4.0 + XSA-11 + Muon-TTT + SLOT). Also: PR #1172 (dexhunter, 1.1015, SLOT+Split-LR+GPTQ+XSA-all). Baseline: 1.2244 bpb.**
 Track both val_bpb AND artifact_bytes in results.tsv.
 
 ## Proven Techniques (do not re-implement)
@@ -58,6 +58,14 @@ Already on the leaderboard — build on these, don't repeat them:
 - Ternary quantization (1, 0, -1) at 74M params
 
 ## Open Research Directions (prioritise these)
+**NEW UNMERGED SOTA techniques (PR #1180, 1.0577 bpb — implement urgently):**
+- **P2 LOSS ((1-p)^2)** — Difficulty-aware training loss. Replaces standard CE. Weight = (1 - model_confidence)^2, focusing training on uncertain tokens. Drop-in replacement: `loss = ((1 - probs.gather(-1, targets.unsqueeze(-1)).squeeze(-1))**2 * (-log_p)).mean()` where log_p = standard CE per-token. Achieved 1.0577 bpb (new unmerged SOTA). High priority to test.
+- **WALLCLOCK-AWARE LR WARMDOWN** (convergent: PR #1180 + PR #1171) — Warmdown triggered by elapsed wall time instead of step count. Ensures full utilization of 600s training budget regardless of step speed. Implementation: record start_time, check `time.time() - start_time >= WARMDOWN_START_SECS`.
+- **CONV TOKEN MIXER** — Adds convolutional mixing to residual path. Likely 1D depthwise conv applied to token sequence before/after attention. Details to be confirmed in PR #1180 code.
+
+**INT5 GPTQ (PR #1171, convergent with PR #1105):**
+- **INT5 GPTQ (clip_range=15)** — 31 unique levels vs 63 for INT6. 0.476 bytes/param (26% smaller than INT6's 0.64 bytes/param). With 22M params, saves ~3.5MB → enables MLP_MULT 3.5+ or larger embedding. Full Hessian GPTQ same as INT6. Simply set QUANT_CLIP_RANGE=15.
+
 **Convergent techniques (proven across multiple top entries — implement first):**
 - XSA-All (Exclusive Self-Attention, all 11 layers) — in 4/7 top entries [IMPLEMENTED in MLX]
 - Full Hessian GPTQ (Cholesky + actorder) — supersedes Int6 QAT, in 4/7 top entries
@@ -76,16 +84,27 @@ Already on the leaderboard — build on these, don't repeat them:
   Base stack: 11L LeakyReLU(0.5)^2, d=512, 4 KV GQA, MLP 3x, BigramHash(2048), SmearGate,
     XSA4, Partial RoPE, LN Scale, EMA, SWA, Late QAT, OrthoInit, VE128, Int6+zstd-22.
   HIGHEST PRIORITY: implement on our stack immediately.
+- **LoRA TTT (rank 8) — CRITICAL UPGRADE (PR #550, 24x more effective than SGD TTT):**
+  Benchmark on 100 seqs, 3ep, score-first per 32K chunk, RTX 5090:
+  Full-param SGD TTT: delta=-0.004 bpb (-0.2%) ← current approach
+  LoRA r=1 (Q+V):    delta=-0.102 bpb (-3.6%)
+  LoRA r=4 (Q+V):    delta=-0.131 bpb (-4.6%)
+  LoRA r=8 (Q+V):    delta=-0.133 bpb (-4.7%) ← BEST
+  LoRA r=8 is ~24x more effective than full-param SGD. Our SGD TTT gives ~-0.010 bpb at H100 scale.
+  Expected LoRA TTT gain: ~-0.050 bpb (24x × 0.002 base). TOP PRIORITY to implement.
+  Config: Adam lr=0.01 (NOT SGD), apply to Q+V projections only, rank=8.
 - Legal Score-First TTT — eval-time -0.010 to -0.018 bpb, in 4+ entries
   Config: TTT_LR=0.002, TTT_EPOCHS=3, TTT_CHUNK_TOKENS=32768, TTT_FREEZE_BLOCKS=2
 - **Muon Legal TTT** (NEW - PR #1148, aamodbhatt, 1.1179): NS orthogonalized updates in TTT loop
   TTT_MUON=1, TTT_NS_STEPS=3. Entropy-adaptive epochs: 2/3/4 per chunk (H_HIGH=2.1, H_LOW=1.75)
   Gives ~-0.018 bpb TTT gain from older base. Drop-in improvement over vanilla SGD TTT.
 - **best_agree online n-gram ensemble** (NEW - PR #1145, AnirudhRahul, 1.1109): Causal eval-time overlay, ~0.003 bpb gain. Drop-in on any base model (no architecture change). 3 prefix-only experts: token n-gram (order=16), within-word continuation, word-start (order=4). Selection: pick by expected_gain = p*boost - log(1+q*(exp(boost)-1)). Agreement bonus: +0.500 if 2+ experts agree. Boost: p'(a) = exp(beta)*p(a)/Z (renormalized). Files: online_best_agree_eval.py + online_ngram_state.c (C extension). Hyperparams: TOKEN_ORDER=16, TOKEN_THRESHOLD=0.800, TOKEN_BOOST=2.625, WITHIN_TAU=0.450, WITHIN_BOOST=0.750, WORD_ORDER=4, WORD_NORMALIZE=strip_punct_lower, WORD_TAU=0.650, WORD_BOOST=0.750, AGREE_ADD_BOOST=0.500, CHUNK_TOKENS=131072. Eval time: ~468s on 8xH100. CONFIRMED VALID.
-- **SLOT (UNDERESTIMATED — PR #1176 shows -0.016 bpb, not -0.0008!)**: Per-batch delta [1,1,512] at last hidden layer.
+- **SLOT (STILL UNDERESTIMATED — PR #1172 shows -0.029 bpb, not -0.016!)**: Per-batch delta [1,1,512] at last hidden layer.
   Protocol: H=forward_hidden(x, no_grad), H.detach(), 5 AdamW steps on compute_logits(H+delta) only, score with detached delta.
   Config: SLOT_LR=0.003, SLOT_STEPS=5 (PR #1176) or LR=0.005, steps=8 (PR #1172, ~90s). Better base model → bigger SLOT gain.
-  PR #1176 breakdown: TTT(-0.003) + SLOT(-0.016) = -0.019 total. With our GPTQ stack, expect -0.010 to -0.016 bpb. HIGH PRIORITY.
+  PR #1176 breakdown: TTT(-0.003) + SLOT(-0.016) = -0.019 total.
+  PR #1172 breakdown: Post-EMA 1.1303 → after SLOT 1.1015 = SLOT contribution -0.029 bpb ← LARGER.
+  REVISED ESTIMATE: With our GPTQ stack, expect -0.020 to -0.029 bpb. HIGH PRIORITY.
 - ResidLambdas — resid_lambda(init=1.0) + x0_lambda(init=0.1) per layer, best non-TTT at 1.1140
 - **QK_GAIN_INIT=4.0 (NEW — PR #1125 sweep, validated PR #1176)**: Per-head learnable Q scaling scalar.
   Implementation: `self.q_gain = nn.Parameter(torch.full((num_heads,), qk_gain_init))` applied before QK dot product.
@@ -100,10 +119,16 @@ Already on the leaderboard — build on these, don't repeat them:
   Three variants: RC (two-sided), R (row-only), C (column-only). Rebalances momentum matrix before NS step.
   No new hyperparameters. Novel direction not yet on leaderboard. ~5 lines in Muon optimizer.
   Potential: improved spectral conditioning → better convergence → lower bpb.
-- NorMuon — Polar Express + Adafactor-style variance reduction + cautious WD (modded-nanogpt SOTA)
+- **NorMuon (FULL DETAILS — modded-nanogpt SOTA, no parameter-golf PR uses it yet):**
+  Pipeline: (1) Nesterov momentum FP32, (2) Polar Express 5-iter orthogonalization,
+  (3) Adafactor-style per-row variance reduction (EMA of row/col squared norms, O(m+n) memory),
+  (4) Cautious WD (only decay when grad agrees with param sign), (5) mantissa tracking for bf16.
+  Defaults: lr=0.023, momentum=0.95, beta2=0.9, WD=1.2. ~5% more compute than NS5 Muon.
+  Our MuonEq RC already showed -0.103 local bpb (different mechanism: equilibration BEFORE NS).
+  NorMuon normalizes AFTER NS (per-row RMS). Complementary to MuonEq. Unexploited in competition.
 - MLP tuning: LeakyReLU(0.5)^2 with 3x expansion (MLP_MULT=3.0), value embed VE_ENABLED=1, VE_DIM=128, VE_LAYERS='9,10'
 - **MLP 3.5× expansion** (NEW - PR #1105): mechanistic analysis of PR #1019 showed MLP at 94.4% SVD rank utilization (fully packed) vs attention Q at 72.6%. Model was parameter-starved in MLP. MLP 3.5× with mixed int5/int6 quantization enables this without exceeding 16MB budget. Contribution: +0.0037 BPB vs 3× MLP. Combined with Brotli-11 and SLOT → 1.1088 BPB (best unmerged).
-- **Brotli-11 compression** (NEW - PR #1105): saves 581KB vs zstd-22. Enables more model capacity within 16MB artifact budget. Drop-in replacement.
+- **Brotli-11 + byte-shuffle compression** (PR #1105, PR #1179): saves 581KB vs zstd-22 (Brotli alone), or ~400KB more than LZMA-9 when combined with byte-shuffle. Byte-shuffle reorders bytes before compression for better correlation. Drop-in replacement. PR #1179 used brotli-11+byte-shuffle with code minification (101KB→23KB) to save extra 78KB.
 - EGGROLL (Antithetic Ternary Bin Search, NEW - PR #1156, 1.1161): post-GPTQ zeroth-order INT6 bin refinement. 1024 random indices, test ±1 shift, keep improvement. 60s eval budget. 6-14 improvements per seed. Strictly additive (cannot degrade). Co-authored by Claude Opus 4.6.
 
 **Promising and now understood:**
@@ -123,6 +148,9 @@ Already on the leaderboard — build on these, don't repeat them:
 **Hyperparameter tuning wins (low-risk, high-value):**
 - WARMDOWN_ITERS=4000 (vs default lower value) — PR #1145 base model achieves 1.1137 bpb, confirmed win
 - SLOT hyperparameters: lr=0.003, steps=5 (PR #1150 confirmation)
+- **GPTQ_RESERVE_MS=9000 (vs 14000)** — reduces calibration from 14s to 9s, recovers ~55 extra training steps free
+- **Sigmoid-gated U-Net skip connections** (PR #1179, 1.1105 bpb, no TTT) — learnable sigmoid gates on encoder-decoder residual skips. Drop-in architectural improvement complementary to all optimizer/quant changes.
+- **Soft-round QAT** (PR #1179) — temperature-controlled rounding replacing hard STE. Alpha schedule: 1→16 over training. Formula: soft_round(x) = x - (alpha * tanh(alpha*(x-round(x))))/alpha. More faithful quantization gradients.
 
 **Experimental (no competitor validation):**
 - Multi-token prediction as auxiliary loss (k=2) — ICLR 2026, no competitor has tried
@@ -161,7 +189,6 @@ Already on the leaderboard — build on these, don't repeat them:
   - [active] parallel_muon_+_adamw (bpb 1.1099)
   - [promising] param_banking (bpb 1.1091)
   - [promising] normuon
-  - [promising] muoneq_rc (local +0.103 bpb over plain NS5; novel, H100 unverified)
 - [active] engramlite (bpb 1.1091)
 - [proven] bigramhash (bpb 1.1099)
 - [active] coprime_loader (bpb 1.1099)
@@ -181,6 +208,7 @@ Already on the leaderboard — build on these, don't repeat them:
 - [promising] triton_fused_mlp (bpb 1.1116)
 - [proven] value_residual (bpb 1.1187)
 - [marginal] brotli (bpb 1.1138)
+- [dead_end] p2_focal_loss (bpb 1.2377 on H100, REGRESSION — downweights confident tokens, reduces effective gradient at 5800-step budget)
 - [dead_end] depth_recurrence
 - [dead_end] mamba_ssm (bpb 1.5633)
 - [dead_end] jepa
@@ -203,6 +231,9 @@ Already on the leaderboard — build on these, don't repeat them:
 - [merged_record, self_gen_calibration_novel] **[openai/parameter-golf] PR #1019: Record: AR Self-Gen GPTQ + XSA-all + BigramHash 3072×112 — val_bpb 1.11473 (3-seed mean)** — score 15.0/15 (2026-03-28T13:34:01Z)
   Merged record achieving 1.1147 bpb (3-seed mean) within 15.91 MB and 600s on 8xH100. The key contribution is AR self-generated calibration data for GPTQ, which avoids validation data access during quantization — a novel and rules-compliant approach. Companion mechanistic interpretability analysis adds confidence in the method.
   → https://github.com/openai/parameter-golf/pull/1019
+- [top_priority, already_in_competitor_scores, p2_loss_novel_direction] **[openai/parameter-golf] PR #1180: SR-CM-P2Loss: 1.0577 bpb (~15.06MB)** — score 15.0/15 (2026-03-31T11:32:19Z)
+  Top leaderboard submission at 1.0577 bpb. P2 loss ((1-p)^2 difficulty-aware weighting) is a novel and simple loss modification (~5 lines). Wallclock-aware LR warmdown and conv token mixer are new directions not in our proven techniques. The 0.29 bpb gap over SOTA makes this the highest-priority item to study and adapt.
+  → https://github.com/openai/parameter-golf/pull/1180
 - [record, competitor_validated, systems_optimization] **[openai/parameter-golf] PR #1105: Record: Fused MLP (Triton+CUTLASS EVT) + Brotli + Memmap — 1.1138 BPB** — score 14.0/15 (2026-03-30T00:03:19Z)
   1.1138 bpb via Fused MLP (Triton+CUTLASS EVT) + Brotli compression + Memmap loading. Systems-level optimization: fused kernels save ~1.8ms/step enabling hundreds more training steps. Brotli achieves better compression than zstd.
   → https://github.com/openai/parameter-golf/pull/1105
@@ -224,28 +255,31 @@ Already on the leaderboard — build on these, don't repeat them:
 - [already_tracked_competitor, eval_time_technique] **[openai/parameter-golf] PR #1145: Record: 1.1109 BPB FullGPTQ XSA11 + online ngram augment** — score 13.0/15 (2026-03-30T18:58:12Z)
   Combines Full GPTQ XSA11 with a novel online n-gram eval-time ensemble (best_agree) that boosts model distribution using prefix-only token/word experts. Achieves 1.1109 bpb. The eval-time augmentation technique is modular and implementable, but this is already a tracked competitor submission.
   → https://github.com/openai/parameter-golf/pull/1145
-- [record, competitor_validated, learned_quantization] **[openai/parameter-golf] PR #1129: Record: CROWN-Q + GPTQ + Legal TTT — val_bpb 1.1174 (3-seed mean)** — score 12.0/15 (2026-03-30T09:49:05Z)
-  1.1174 bpb. CROWN-Q (learned quantization grid) + GPTQ + Legal TTT. CROWN-Q learns optimal quantization boundaries per-layer, reducing quantization error vs fixed int6 grid.
-  → https://github.com/openai/parameter-golf/pull/1129
-- [record, competitor_validated, value_residual] **[openai/parameter-golf] PR #1118: Submission: 11L XSA4 + TrigramHash + ValueResidual + Legal TTT (val_bpb=1.1187)** — score 12.0/15 (2026-03-30T04:15:35Z)
-  1.1187 bpb. 11L XSA4 + TrigramHash + ValueResidual + Legal TTT. ValueResidual is a technique where value projections get a direct residual path, improving gradient flow through attention layers.
-  → https://github.com/openai/parameter-golf/pull/1118
+- [already_known_competitor, top_leaderboard, validates_ttt_scaling] **[openai/parameter-golf] PR #672: Record: 30ep Cosine TTT on LeakyReLU² stack (3-seed mean val_bpb=1.0781)** — score 13.0/15 (2026-03-25T03:22:29Z)
+  Current leaderboard SOTA at 1.0781 bpb via 30-epoch cosine TTT on the LeakyReLU² stack, validated across 3 seeds with tight std=0.0041. Already listed as top competitor — no novelty for our implementation, but strongly validates TTT epoch scaling as the highest-impact single lever available.
+  → https://github.com/openai/parameter-golf/pull/672
 <!-- RESEARCH_END -->
 
 ## Experiment History
 <!-- EXPERIMENTS_START -->
-- [local] Baseline: AdamW 3e-4, XSA-all, EngramLite, 200 iters, 30.7M params. Loss stuck at random init (1.6M tokens insufficient to show learning). Establishes timing: 2s/step on M4. — val_bpb=10.0074, status=keep (cost=$0.00)
-- [local] Muon (NS5 lr=0.025) + QK_GAIN=4.0 + LEAKY_SLOPE=0.3. 200 iters. Loss 6.75→6.63 (learning signal!), AdamW was flat at 6.93. val_bpb 9.623 vs 10.007 baseline (-0.384 improvement). 2.62s/step. Clear Muon win. — val_bpb=9.6233, status=keep (cost=$0.00)
-- [local] Turbo-Muon (Polar Express 4-iter + AOL preconditioning). 500 iters. val_bpb 9.366 vs 9.623 (-0.257). Train loss 6.73→6.49. BUT 1233s run time (>10min limit) due to EMA eval every step. Fix needed. — val_bpb=9.3661, status=keep (cost=$0.00)
-- [local] LEAKY_SLOPE=0.75 (vs 0.3). Turbo-Muon unchanged. 500 iters. val_bpb 9.354 vs 9.366 (-0.012). Train loss 6.73->6.48. PR #1135 uses 0.75, positive direction confirmed. — val_bpb=9.3537, status=keep (cost=$0.00)
-- [local] Coprime loader v1 (BAD stride=n/2): alternates between 2 positions only. Phase=53M hit low-entropy data (train loss 4.69 vs normal 6.73). val_bpb 9.919 WORSE than baseline. Bug: stride should be n//total_steps not n//2. — val_bpb=9.9186, status=discard (cost=$0.00)
-- [local] Coprime loader v2 (stride=200001≈n/500, correct full-shard coverage + WARMDOWN_ITERS param). Neutral: val_bpb 9.356 vs 9.354 (within noise). Expected — 500 steps only covers 4% of shard anyway. Implementation correct for H100. — val_bpb=9.3555, status=keep (cost=$0.00)
+- [local] Standard NS5 Muon (cubic, a=15/8 b=-5/4 c=3/8) + LEAKY_SLOPE=0.75. 500 iters. val_bpb 9.474 vs 9.354 Turbo-Muon baseline — expected regression at 500 steps (Turbo-Muon faster short-term convergence). H100 correct: PR #1105 confirmed Turbo-Muon +0.0018 BPB worse at 7000+ steps. NS5 now canonical for H100 runs. — val_bpb=9.4739, status=keep (cost=$0.00)
+- [local] ResidLambdas: x0_lambda init=0.1 (vs resid_mix init=0.0). val_bpb 9.506 vs 9.474 baseline (-0.031 worse). Scale-dependent: PR #1130 uses it at H100 scale (7000+ steps). At 500 steps the x0 injection adds noise before the model can benefit. Reverted. Note: attn_scale/mlp_scale (init=1.0) already implement the resid_lambda part; only x0 injection was new. — val_bpb=9.5056, status=discard (cost=$0.00)
+- [local] MuonEq RC equilibration before NS5 (arxiv:2603.28254): per-row then per-col normalization of gradient matrix before NS iterations. val_bpb 9.371 vs NS5 baseline 9.474 (-0.103). Train loss 6.76→6.38. 2.75s/step. Novel technique not yet on leaderboard. Closes gap vs Turbo-Muon (9.354) while keeping standard NS5 5-iter that works at H100 scale. — val_bpb=9.3708, status=keep (cost=$0.00)
+- [local] TTT-3 smoke test: TTT_EPOCHS=3, TTT_CHUNK_TOKENS=32768, MAX_VAL_TOKENS=131072. val_bpb 9.380 vs 9.371 MuonEq baseline — neutral at 500 steps (expected: undertrained model has too-high loss for TTT signal). TTT takes 108.9s for 4 chunks (validated impl). H100 scale (7000 steps, well-trained) should show full -0.041 bpb gain from 30 epochs. — val_bpb=9.3800, status=keep (cost=$0.00)
+- [runpod] H100 Cycle 23 baseline: NS5+MuonEq+LEAKY=0.75+XSA-all+EngramLite+GPTQ-zlib (TTT disabled). Artifact 188KB over 16MB limit — zstandard not installed on pod (fell back to zlib). Fix: install zstandard before torchrun. — val_bpb=1.3500, status=keep (cost=$4.72)
+- [runpod] H100 Cycle 25: training OK (val_bpb 1.1830 at step 5830, +EGGROLL 34 improvements), TTT timed out (SSH 1800s limit exceeded by HF download ~327s + GPTQ 38s + EGGROLL 23s). zstd STILL failing (externally-managed env). Artifact 16.79MB > 16MB (zlib). Fixes: --break-system-packages, timeout 1800→2400s. — val_bpb=1.1830, status=crash (cost=$10.02)
+- [local] P2 focal loss (PR #1180): (1-p)^2 * CE weighting. 500 iters, MuonEq+NS5+QK_GAIN=4.0+XSA-all+EngramLite+LEAKY=0.75. val_bpb 9.351 vs MuonEq baseline 9.371 (-0.020). Train loss 6.75→6.41. Clear positive signal at local scale. — val_bpb=9.3512, status=keep (cost=$0.00)
+- [runpod]  — val_bpb=0.0000, status=crash (cost=$4.81)
+- [runpod] H100 BASELINE SUCCESS (Rascal PR #1120 + HF data download fix in train_gpt.py). val_bpb=1.1705 (sliding window stride=64, exact=1.17049). Post-EMA=1.1876. 5825 steps in 601s. GPTQ int6+zstd=16.29MB + code 131KB = 16.42MB total (420KB OVER 16MB limit). Fix needed: minify code or reduce params. First clean H100 run. Pipeline fully validated. — val_bpb=1.1705, status=keep (cost=$5.30)
+- [runpod] Brotli-11 + P2 focal loss (buggy normalization). val_bpb=1.2424 (REGRESSION). Artifact 11.63MB (brotli saves 4.8MB). P2 normalization bug: w.sum() division. — val_bpb=1.2424, status=keep (cost=$5.99)
+- [runpod] P2 focal loss (fixed mean normalization) + brotli-11 + INT5 GPTQ. val_bpb=1.2377 (still REGRESSION from 1.1705 baseline, +0.067). P2 loss CONFIRMED HARMFUL at H100 5800-step budget — downweights confident tokens, reduces effective gradient during warmdown. Artifact 11.63MB (under 16MB, brotli works). Conclusion: disable P2 loss, keep brotli-11. — val_bpb=1.2377, status=keep (cost=$5.99)
 <!-- EXPERIMENTS_END -->
 
 ## Competitor Scores
 <!-- COMPETITORS_START -->
 | PR # | Author | Technique | val_bpb | Δ baseline |
 |------|--------|-----------|---------|------------|
+| #1180 | estesryan | SR-CM-P2Loss: (~15.06MB) | 1.0577 | -0.1667 |
 | #672 | andrewbaggio1 | 30ep Cosine TTT on LeakyReLU² stack | 1.0781 | -0.1463 |
 | #1143 | simon-marcus | Scylla (novel tokenizer) + Legal Score-First TTT | 1.0806 | -0.1438 |
 | #1105 | abaybektursun | Fused MLP (Triton+CUTLASS EVT) + MLP 3.5× + Mixed int5/int6 + SLOT + Brotli | 1.1088 | -0.1156 |
@@ -254,13 +288,12 @@ Already on the leaderboard — build on these, don't repeat them:
 | #1145 | AnirudhRahul | FullGPTQ XSA11 + online ngram augment | 1.1109 | -0.1135 |
 | #1135 |  | Fused Triton MLP + Full GPTQ + Coprime Loader + XSA-all + BH2816 | 1.1116 | -0.1128 |
 | #1105 | abaybektursun | Fused MLP (Triton+CUTLASS EVT) + MLP 3.5× + Mixed int5/int6 + Brotli — (seed 314, more seeds running) | 1.1123 | -0.1121 |
+| #1105 | abaybektursun | Fused MLP (Triton+CUTLASS EVT) + MLP 3.5× + Mixed int5/int6 + Brotli | 1.1125 | -0.1119 |
 | #1105 | abaybektursun | Fused MLP (Triton+CUTLASS EVT) + Brotli + Memmap | 1.1138 | -0.1106 |
 | #1130 | Gusanidas | ResidLambdas + Split-LR + Train-Budget GPTQ + Coprime Loader (12-seed mean) | 1.1140 | -0.1104 |
+| #1171 | EthanYangTW | : Parallel Muon + INT5 GPTQ + Legal TTT | 1.1145 | -0.1099 |
 | #1122 | mikeapedia | EngramLite + Gated Skips + Full GPTQ + FA3 | 1.1146 | -0.1098 |
 | #1150 | sahiee-dev | Legal TTT (SGD, 3-epoch) + SLOT (lr=0.003, steps=5) on PR #549 base -- val_bpb: 1.11512 | 1.1151 | -0.1093 |
-| #1128 | AnubhavBharadwaaj | SLOT + LeakyReLU² + Legal Score-First TTT + Parallel Muon — val_bpb 1.1154 (3-seed mean) val_bpb = 1.1154 (3-seed mean, std 0.0002) | ~15.9 MB | 8×H100 SXM | 1.1154 | -0.1090 |
-| #1129 |  | CROWN-Q + GPTQ + Legal TTT | 1.1174 | -0.1070 |
-| #965 | Adam-Jacuch | via KGIIR Trajectory Mixing | 1.1184 | -0.1060 |
 <!-- COMPETITORS_END -->
 
 ## Verified Research (deep-analyzed)
