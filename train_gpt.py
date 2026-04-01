@@ -235,7 +235,7 @@ class Hyperparameters:
     train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
     eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 2048))
     max_wallclock_seconds = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
-    qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 1.5))
+    qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 4.0))  # PR #1125 sweep: 4.0 > 3.0 > 2.0 > 1.5, -0.006 bpb
     vocab_size = int(os.environ.get("VOCAB_SIZE", 1024))
     num_layers = int(os.environ.get("NUM_LAYERS", 11))
     num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
@@ -334,8 +334,8 @@ class Hyperparameters:
     )  # ms reserved for GPTQ (9s actual ~8.4s calib)
     # SLOT (Stochastic Logit Overlay at Test-time)
     slot_enabled = bool(int(os.environ.get("SLOT_ENABLED", "1")))
-    slot_lr = float(os.environ.get("SLOT_LR", 0.003))
-    slot_steps = int(os.environ.get("SLOT_STEPS", 5))
+    slot_lr = float(os.environ.get("SLOT_LR", 0.005))  # PR #1172: 0.005 gives -0.029 bpb (vs 0.003 gave -0.0018)
+    slot_steps = int(os.environ.get("SLOT_STEPS", 8))  # PR #1172: 8 steps (vs 5 gave -0.0018)
     slot_wd = float(os.environ.get("SLOT_WD", 0.0))
 
 
