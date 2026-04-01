@@ -28,6 +28,42 @@ Trigger: call `python orchestrate.py --promote <run_id>`
 The orchestrator handles pod launch, sync, training, result fetch, and termination.
 You do NOT interact with RunPod directly. Tag a result `PROMOTE` to queue it.
 
+## Infrastructure & Tooling (MUST READ — recent changes)
+
+**Pod execution flow (git-clone + HTTP, no SSH):**
+RunPod direct TCP is broken. Pods now clone the repo from GitHub and serve results via HTTP proxy.
+This means `train_gpt.py` MUST be committed and pushed before every promote.
+The startup script: clone repo → install zstandard → detect/download data → torchrun → GPTQ → serve results via HTTP on port 18080.
+Orchestrator polls `https://{pod_id}-18080.proxy.runpod.net/results.json` for completion, then downloads run.log/model files.
+
+**GPU count is configurable:**
+`RUNPOD_GPU_COUNT=1` (current default) — $2.69/hr, use for iteration and debugging.
+`RUNPOD_GPU_COUNT=8` — $21.52/hr, use only for final competition submissions.
+The training script auto-detects via `NPROC` env var: `torchrun --nproc_per_node=${NPROC}`.
+Results from 1-GPU runs are directionally valid but bpb won't match 8-GPU exactly.
+
+**Data: full 80 train shards:**
+Previous runs used only 32/80 shards (40% of data), causing 0.06 bpb gap vs SOTA.
+Now downloads all 80 train shards from HuggingFace (`willdepueoai/parameter-golf`).
+Download happens in startup script BEFORE torchrun — doesn't count against 600s training budget.
+Takes ~150s for 80 shards. The `_ensure_data()` fallback in train_gpt.py also downloads 80 shards.
+
+**Step-1000 early eval (the "oracle checkpoint"):**
+Research shows r=0.86 correlation between step-1000 val_bpb and final val_bpb (abay.tech/posts/pgolf-meta).
+`EARLY_EVAL_STEP=1000` — forces a validation pass at step 1000 regardless of VAL_LOSS_EVERY.
+`EARLY_ABORT_BPB=0` (disabled by default) — if set, aborts training when step-1000 val_bpb exceeds threshold.
+Use this to kill bad runs after ~90s instead of burning 10 minutes. Calibrate threshold after a few runs.
+
+**zstd API compatibility:**
+Pod runs Python 3.12 (`zstandard` pip package uses `max_output_size`).
+Local dev may run Python 3.13 (built-in `_zstd` uses `max_length`).
+The `_decompress()` function handles both via try/except. Don't change this.
+
+**Pod lifecycle safety:**
+Before creating any new pod, the orchestrator terminates ALL running `pgolf-*` pods via API query.
+This prevents orphaned pods from killed promote commands. Pods cost $2.69-$21.52/hr — orphans are expensive.
+NEVER kill a running promote command — it manages the pod lifecycle. Wait for it to complete or timeout.
+
 ## Hard Constraints (NEVER violate)
 - Artifact: `python measure_artifact.py` ≤ 16,000,000 bytes
 - Training: ≤ 600s on 8×H100 SXM (torchrun 8 processes)
@@ -200,6 +236,7 @@ Already on the leaderboard — build on these, don't repeat them:
 - [proven] partial_rope
 - [proven] smeargate
 - [proven] orthoinit
+- [proven] muoneq_rc (bpb 1.1599 on H100, -0.0036 vs baseline. arxiv:2603.28254 row/col equilibration before NS5)
 - [proven] leakyrelu_sq (bpb 1.1116)
 - [proven] ternary_quantization
 - [promising] legal_ttt (bpb 1.1154)
