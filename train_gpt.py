@@ -337,6 +337,9 @@ class Hyperparameters:
     slot_lr = float(os.environ.get("SLOT_LR", 0.005))  # PR #1172: 0.005 gives -0.029 bpb (vs 0.003 gave -0.0018)
     slot_steps = int(os.environ.get("SLOT_STEPS", 8))  # PR #1172: 8 steps (vs 5 gave -0.0018)
     slot_wd = float(os.environ.get("SLOT_WD", 0.0))
+    # NorMuon variance reduction (per-row/col RMS norm AFTER NS5)
+    muon_vr = bool(int(os.environ.get("MUON_VR", "1")))  # enabled — positive local signal -0.022 bpb
+    muon_vr_beta2 = float(os.environ.get("MUON_VR_BETA2", "0.95"))
 
 
 def maybe_compile(fn_or_module, *, enabled: bool, fullgraph: bool, mode: str = ""):
@@ -499,6 +502,8 @@ class Muon(torch.optim.Optimizer):
         backend_steps: int,
         nesterov: bool = True,
         weight_decay: float = 0.0,
+        vr: bool = False,
+        vr_beta2: float = 0.95,
     ):
         super().__init__(
             params,
@@ -511,6 +516,8 @@ class Muon(torch.optim.Optimizer):
             ),
         )
         self._built = False
+        self._vr = vr
+        self._vr_beta2 = vr_beta2
 
     def _build(self):
         self._distributed = dist.is_available() and dist.is_initialized()
@@ -547,6 +554,19 @@ class Muon(torch.optim.Optimizer):
                 )
         # Sort by size descending -- launch biggest reduce-scatters first
         self._bank_meta.sort(key=lambda m: -m["p"].numel())
+        # NorMuon VR: per-bank EMA of per-row/col squared norms (after NS5)
+        if self._vr:
+            for m in self._bank_meta:
+                shard_shape = m["shard"].shape  # (shard_B, rows, cols) or (rows, cols)
+                if shard_shape[-2] >= shard_shape[-1]:
+                    # M >= N: reduce along cols -> VR buf shape (..., rows, 1)
+                    vr_shape = list(shard_shape)
+                    vr_shape[-1] = 1
+                else:
+                    # M < N: reduce along rows -> VR buf shape (..., 1, cols)
+                    vr_shape = list(shard_shape)
+                    vr_shape[-2] = 1
+                m["vr_buf"] = torch.ones(vr_shape, device=m["shard"].device, dtype=torch.float32)
         self._built = True
 
     def launch_reduce_scatters(self):
@@ -624,6 +644,19 @@ class Muon(torch.optim.Optimizer):
                     update = buf
 
                 update = zeropower_via_newtonschulz5(update, steps=backend_steps)
+
+                # NorMuon VR: per-row/col RMS normalization after NS5
+                if self._vr:
+                    M, N = update.shape[-2], update.shape[-1]
+                    red_axis = -1 if M >= N else -2
+                    v_mean = (update.float() ** 2).mean(dim=red_axis, keepdim=True)
+                    red_dim = N if M >= N else M
+                    v_norm = (v_mean.sum() * red_dim + 1e-10).sqrt()
+                    vr_buf = m["vr_buf"]
+                    vr_buf.mul_(self._vr_beta2).add_(v_mean, alpha=1.0 - self._vr_beta2)
+                    step_size = torch.rsqrt(vr_buf + 1e-10)
+                    v_norm_new = (v_mean * red_dim * step_size ** 2).sum().add_(1e-10).sqrt()
+                    update = (update.float() * step_size * (v_norm / v_norm_new)).bfloat16()
 
                 if sharded:
                     prev_ag_handle = dist.all_gather_into_tensor(
@@ -2939,6 +2972,8 @@ def main() -> None:
         momentum=args.muon_momentum,
         backend_steps=args.muon_backend_steps,
         weight_decay=args.muon_wd,
+        vr=args.muon_vr,
+        vr_beta2=args.muon_vr_beta2,
     )
     for group in optimizer_muon.param_groups:
         group["base_lr"] = args.matrix_lr
@@ -3006,6 +3041,7 @@ def main() -> None:
         f"fullgraph={int(args.compile_fullgraph)}"
     )
     log0(f"mlp_kernel_mode:{args.mlp_kernel_mode or 'eager'}")
+    log0(f"muon_vr:{int(args.muon_vr)} muon_vr_beta2:{args.muon_vr_beta2}")
     log0(
         f"scale_init:attn={args.attn_scale_init:.4f} mlp={args.mlp_scale_init:.4f} "
         f"resid_mix=({args.resid_mix_x_init:.4f},{args.resid_mix_x0_init:.4f}) "

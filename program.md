@@ -224,7 +224,7 @@ Already on the leaderboard — build on these, don't repeat them:
 - [dead_end] turbo_muon (bpb 1.1091)
   - [active] parallel_muon_+_adamw (bpb 1.1099)
   - [promising] param_banking (bpb 1.1091)
-  - [promising] normuon
+  - [active] normuon_vr (bpb 9.349 local, -0.022 vs MuonEq baseline)
 - [active] engramlite (bpb 1.1091)
 - [proven] bigramhash (bpb 1.1099)
 - [active] coprime_loader (bpb 1.1099)
@@ -310,6 +310,7 @@ Already on the leaderboard — build on these, don't repeat them:
 - [runpod] H100 BASELINE SUCCESS (Rascal PR #1120 + HF data download fix in train_gpt.py). val_bpb=1.1705 (sliding window stride=64, exact=1.17049). Post-EMA=1.1876. 5825 steps in 601s. GPTQ int6+zstd=16.29MB + code 131KB = 16.42MB total (420KB OVER 16MB limit). Fix needed: minify code or reduce params. First clean H100 run. Pipeline fully validated. — val_bpb=1.1705, status=keep (cost=$5.30)
 - [runpod] Brotli-11 + P2 focal loss (buggy normalization). val_bpb=1.2424 (REGRESSION). Artifact 11.63MB (brotli saves 4.8MB). P2 normalization bug: w.sum() division. — val_bpb=1.2424, status=keep (cost=$5.99)
 - [runpod] P2 focal loss (fixed mean normalization) + brotli-11 + INT5 GPTQ. val_bpb=1.2377 (still REGRESSION from 1.1705 baseline, +0.067). P2 loss CONFIRMED HARMFUL at H100 5800-step budget — downweights confident tokens, reduces effective gradient during warmdown. Artifact 11.63MB (under 16MB, brotli works). Conclusion: disable P2 loss, keep brotli-11. — val_bpb=1.2377, status=keep (cost=$5.99)
+- [local] NorMuon VR (Adafactor-style variance reduction AFTER NS5): MUON_VR=1 MUON_VR_BETA2=0.95. val_bpb 9.349 vs MuonEq baseline 9.371 (-0.022). Train loss 6.78→6.44. Complementary to MuonEq RC (which equilibrates BEFORE NS5). Ported to train_gpt.py for H100. — val_bpb=9.3488, status=keep (cost=$0.00)
 <!-- EXPERIMENTS_END -->
 
 ## Competitor Scores
