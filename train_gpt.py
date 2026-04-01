@@ -450,7 +450,9 @@ class TrainNgramTracker:
 
 
 def zeropower_via_newtonschulz5(G: Tensor, steps: int = 5, eps: float = 1e-7) -> Tensor:
-    """Batched Newton-Schulz orthogonalization. G: (B,M,N) or (M,N)."""
+    """Batched Newton-Schulz orthogonalization with MuonEq RC equilibration.
+    G: (B,M,N) or (M,N). MuonEq (arxiv:2603.28254): O(m+n) row/col
+    normalization before NS5 improves spectral conditioning."""
     a, b, c = (3.4445, -4.7750, 2.0315)
     was_2d = G.ndim == 2
     if was_2d:
@@ -459,6 +461,11 @@ def zeropower_via_newtonschulz5(G: Tensor, steps: int = 5, eps: float = 1e-7) ->
     transposed = X.size(-2) > X.size(-1)
     if transposed:
         X = X.mT
+    # MuonEq RC equilibration: normalize rows then columns
+    row_norms = X.norm(dim=-1, keepdim=True).clamp_min(1e-8)
+    X = X / row_norms
+    col_norms = X.norm(dim=-2, keepdim=True).clamp_min(1e-8)
+    X = X / col_norms
     X = X / (X.norm(dim=(-2, -1), keepdim=True) + eps)
     for _ in range(steps):
         A = X @ X.mT
