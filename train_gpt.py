@@ -1614,7 +1614,7 @@ class GPT(nn.Module):
             with torch.no_grad():
                 p = torch.exp(-per_tok_loss)  # model confidence for correct token
                 w = (1.0 - p).square()  # focus on uncertain tokens
-            main_loss = (per_tok_loss * w).sum() / w.sum()
+            main_loss = (per_tok_loss * w).mean()
         elif (
             hasattr(self, "_ngram_tracker")
             and self._ngram_tracker is not None
