@@ -347,7 +347,7 @@ class Hyperparameters:
     # TTT: Legal Score-First Test-Time Training (PR #672, #1130)
     ttt_enabled = bool(int(os.environ.get("TTT_ENABLED", "1")))
     ttt_lr = float(os.environ.get("TTT_LR", 0.002))
-    ttt_epochs = int(os.environ.get("TTT_EPOCHS", 3))
+    ttt_epochs = int(os.environ.get("TTT_EPOCHS", 10))
     ttt_chunk_tokens = int(os.environ.get("TTT_CHUNK_TOKENS", 32768))
     ttt_freeze_blocks = int(os.environ.get("TTT_FREEZE_BLOCKS", 2))
     ttt_momentum = float(os.environ.get("TTT_MOMENTUM", 0.9))
