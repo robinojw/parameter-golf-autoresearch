@@ -2247,14 +2247,25 @@ def _compress(data: bytes) -> bytes:
 
 
 def _decompress(data: bytes) -> bytes:
-    if _COMPRESSOR == "brotli":
-        return _brotli.decompress(data)
-    if _COMPRESSOR == "zstd":
+    """Auto-detect compression format to avoid pip-race _COMPRESSOR mismatch across ranks."""
+    # Try brotli first (most common in our pipeline)
+    try:
+        import brotli
+        return brotli.decompress(data)
+    except (ImportError, Exception):
+        pass
+    # Try zstd
+    try:
+        import zstandard
         try:
-            return _zstd.ZstdDecompressor().decompress(data, max_length=2**33)
+            return zstandard.ZstdDecompressor().decompress(data, max_length=2**33)
         except TypeError:
-            return _zstd.ZstdDecompressor().decompress(data, max_output_size=2**33)
-    return _zlib.decompress(data)
+            return zstandard.ZstdDecompressor().decompress(data, max_output_size=2**33)
+    except (ImportError, Exception):
+        pass
+    # Fallback to zlib
+    import zlib
+    return zlib.decompress(data)
 
 
 _GPTQ_KEEP_FLOAT_NUMEL = 65_536  # tensors <= this many elements are kept as float16
@@ -3160,6 +3171,11 @@ def main() -> None:
         if distributed:
             dist.barrier()
         # All ranks: load quantized weights and restore model for final eval
+        # Resolve actual path — pip race can cause _COMPRESSOR mismatch across ranks
+        for _candidate in ("final_model.int6.br", "final_model.int6.zst"):
+            if os.path.exists(_candidate):
+                quant_path = _candidate
+                break
         with open(quant_path, "rb") as f:
             compressed_disk = f.read()
         quant_obj_disk = load_and_decompress_quant_obj(compressed_disk)
