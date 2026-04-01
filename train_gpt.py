@@ -646,7 +646,9 @@ class Muon(torch.optim.Optimizer):
                 update = zeropower_via_newtonschulz5(update, steps=backend_steps)
 
                 # NorMuon VR: per-row/col RMS normalization after NS5
-                if self._vr:
+                # Only apply when sharded — VR bufs are sized for shard shape,
+                # not full bank shape (warmup uses non-sharded path).
+                if self._vr and sharded:
                     M, N = update.shape[-2], update.shape[-1]
                     red_axis = -1 if M >= N else -2
                     v_mean = (update.float() ** 2).mean(dim=red_axis, keepdim=True)
