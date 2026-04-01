@@ -229,7 +229,7 @@ class Hyperparameters:
     early_abort_bpb = float(os.environ.get("EARLY_ABORT_BPB", 0))
     train_log_every = int(os.environ.get("TRAIN_LOG_EVERY", 500))
     iterations = int(os.environ.get("ITERATIONS", 20000))
-    warmdown_iters = int(os.environ.get("WARMDOWN_ITERS", 3500))
+    warmdown_iters = int(os.environ.get("WARMDOWN_ITERS", 4000))
     warmup_steps = int(os.environ.get("WARMUP_STEPS", 20))
     train_batch_tokens = int(os.environ.get("TRAIN_BATCH_TOKENS", 786_432))
     train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
@@ -338,8 +338,12 @@ class Hyperparameters:
     slot_steps = int(os.environ.get("SLOT_STEPS", 8))  # PR #1172: 8 steps (vs 5 gave -0.0018)
     slot_wd = float(os.environ.get("SLOT_WD", 0.0))
     # NorMuon variance reduction (per-row/col RMS norm AFTER NS5)
-    muon_vr = bool(int(os.environ.get("MUON_VR", "1")))  # enabled — positive local signal -0.022 bpb
+    muon_vr = bool(int(os.environ.get("MUON_VR", "0")))  # disabled — marginal on H100 (-0.0002 bpb)
     muon_vr_beta2 = float(os.environ.get("MUON_VR_BETA2", "0.95"))
+    # EGGROLL: post-GPTQ zeroth-order INT6 bin refinement (PR #1156)
+    eggroll_enabled = bool(int(os.environ.get("EGGROLL_ENABLED", "1")))
+    eggroll_budget_ms = float(os.environ.get("EGGROLL_BUDGET_MS", 60000))  # 60s budget
+    eggroll_indices = int(os.environ.get("EGGROLL_INDICES", 1024))  # random indices per step
 
 
 def maybe_compile(fn_or_module, *, enabled: bool, fullgraph: bool, mode: str = ""):
@@ -2740,6 +2744,140 @@ def dequantize_state_dict_int6(quant_obj: dict) -> dict[str, Tensor]:
     return out
 
 
+def eggroll_refine(
+    args: "Hyperparameters",
+    model: nn.Module,
+    quant_obj: dict,
+    val_tokens: Tensor,
+    device: torch.device,
+    rank: int,
+    log_fn=print,
+    clip_range: int = 31,
+    budget_ms: float = 60000.0,
+    n_indices: int = 1024,
+) -> int:
+    """EGGROLL: post-GPTQ zeroth-order INT6 bin refinement (PR #1156).
+
+    Eval-time technique: perturb quantized bins by +/-1, keep improvements.
+    Strictly additive. Returns number of improvements found.
+    """
+    if rank != 0:
+        return 0  # only rank 0 does refinement
+
+    q_names = list(quant_obj["quantized"].keys())
+    if not q_names:
+        return 0
+
+    # Build a mapping from quant tensor flat index to (param_name, multi_index, scale_value)
+    # so we can apply delta directly to model params without full dequantize.
+    q_info: list[tuple[str, Tensor, Tensor]] = []  # (name, q_flat, scales_for_flat)
+    total_elements = 0
+    offsets: list[int] = []
+    for name in q_names:
+        q = quant_obj["quantized"][name]
+        s = quant_obj["scales"][name]
+        n = q.numel()
+        offsets.append(total_elements)
+        # Build per-element scale lookup (scale is per-row)
+        if q.ndim == 3:
+            # Bank: [slices, rows, cols], scales: [slices, rows]
+            s_expanded = s.float().unsqueeze(-1).expand_as(q).contiguous().view(-1)
+        elif q.ndim == 2:
+            # 2D: [rows, cols], scales: [rows]
+            s_expanded = s.float().unsqueeze(-1).expand_as(q).contiguous().view(-1)
+        else:
+            s_expanded = s.float().expand(n)
+        q_info.append((name, q.view(-1), s_expanded))
+        total_elements += n
+    offsets.append(total_elements)
+
+    # Prepare small validation set (16 sequences)
+    val_seqs = min(16, (val_tokens.numel() - 1) // args.eval_seq_len)
+    if val_seqs < 1:
+        return 0
+    val_x = val_tokens[: val_seqs * args.eval_seq_len].reshape(val_seqs, args.eval_seq_len).to(device)
+    val_y = val_tokens[1 : val_seqs * args.eval_seq_len + 1].reshape(val_seqs, args.eval_seq_len).to(device)
+
+    # Load dequantized model once as baseline
+    state = dequantize_state_dict_int6(quant_obj)
+    model.load_state_dict(state, strict=True)
+    model.eval()
+    del state
+
+    # Map param names to flat GPU tensors for fast in-place updates
+    param_flat_map: dict[str, Tensor] = {}
+    for pname, p in model.named_parameters():
+        param_flat_map[pname] = p.data.view(-1)
+    for bname, buf in model.named_buffers():
+        if bname not in param_flat_map:
+            param_flat_map[bname] = buf.view(-1)
+
+    def _eval_loss() -> float:
+        with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            logits = model.forward_logits(val_x)
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), val_y.view(-1))
+        return loss.item()
+
+    best_loss = _eval_loss()
+    improvements = 0
+    tested = 0
+    t_start = time.perf_counter()
+    rng = random.Random(args.seed + 42)
+
+    while (time.perf_counter() - t_start) * 1000 < budget_ms:
+        # Sample random flat indices
+        indices = [rng.randint(0, total_elements - 1) for _ in range(n_indices)]
+
+        for flat_idx in indices:
+            if (time.perf_counter() - t_start) * 1000 >= budget_ms:
+                break
+
+            # Find which tensor this index belongs to (binary search via offsets)
+            tensor_idx = 0
+            for i in range(len(offsets) - 1):
+                if flat_idx < offsets[i + 1]:
+                    tensor_idx = i
+                    break
+            local_idx = flat_idx - offsets[tensor_idx]
+            name, q_flat, s_flat = q_info[tensor_idx]
+            original_q = q_flat[local_idx].item()
+            scale = s_flat[local_idx].item()
+
+            pf = param_flat_map.get(name)
+            if pf is None:
+                continue
+
+            for delta in (+1, -1):
+                new_q = original_q + delta
+                if new_q > clip_range or new_q < -clip_range:
+                    continue
+                # Weight delta = (new_q - old_q) * scale
+                weight_delta = delta * scale
+                # Apply delta in-place to model param on GPU
+                with torch.no_grad():
+                    pf[local_idx] += weight_delta
+                tested += 1
+                trial_loss = _eval_loss()
+                if trial_loss < best_loss:
+                    best_loss = trial_loss
+                    improvements += 1
+                    q_flat[local_idx] = new_q  # keep change in quantized bins
+                    break  # move to next index
+                else:
+                    with torch.no_grad():
+                        pf[local_idx] -= weight_delta
+            # If neither +/-1 improved, original value is restored
+
+        elapsed_ms = (time.perf_counter() - t_start) * 1000
+        log_fn(
+            f"eggroll:tested:{tested} improvements:{improvements} "
+            f"best_loss:{best_loss:.6f} elapsed:{elapsed_ms:.0f}ms"
+        )
+
+    # quant_obj bins have been updated in-place — caller re-serializes
+    return improvements
+
+
 def pack_and_compress_quant_obj(quant_obj: dict) -> bytes:
     buf = io.BytesIO()
     torch.save(quant_obj, buf)
@@ -3377,6 +3515,27 @@ def main() -> None:
                 f"gptq:quantized baseline={qstats['baseline_bytes']} quant={qstats['quant_bytes']} "
                 f"ratio={quant_ratio:.2f}x n_quant={qstats['n_quant']} n_pass={qstats['n_pass']}"
             )
+            # EGGROLL: post-GPTQ zeroth-order bin refinement
+            if args.eggroll_enabled:
+                torch.cuda.synchronize()
+                t_eggroll = time.perf_counter()
+                n_improved = eggroll_refine(
+                    args=args,
+                    model=base_model,
+                    quant_obj=quant_obj,
+                    val_tokens=val_tokens,
+                    device=device,
+                    rank=rank,
+                    log_fn=log0,
+                    clip_range=args.gptq_clip_range,
+                    budget_ms=args.eggroll_budget_ms,
+                    n_indices=args.eggroll_indices,
+                )
+                torch.cuda.synchronize()
+                log0(
+                    f"eggroll:done improvements={n_improved} "
+                    f"time={1000 * (time.perf_counter() - t_eggroll):.0f}ms"
+                )
             # Serialize + compress
             compressed = pack_and_compress_quant_obj(quant_obj)
             with open(quant_path, "wb") as f:
