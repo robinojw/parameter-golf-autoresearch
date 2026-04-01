@@ -278,10 +278,10 @@ class Hyperparameters:
     gptq_enabled = bool(int(os.environ.get("GPTQ_ENABLED", "1")))
     gptq_calib_batches = int(os.environ.get("GPTQ_CALIB_BATCHES", 64))
     gptq_block_size = int(os.environ.get("GPTQ_BLOCK_SIZE", 128))
-    gptq_clip_range = int(os.environ.get("GPTQ_CLIP_RANGE", 31))  # int6: [-31, 31]
+    gptq_clip_range = int(os.environ.get("GPTQ_CLIP_RANGE", 15))  # int5: [-15, 15]
     gptq_reserve_ms = float(
-        os.environ.get("GPTQ_RESERVE_MS", "10000")
-    )  # ms reserved for GPTQ
+        os.environ.get("GPTQ_RESERVE_MS", "9000")
+    )  # ms reserved for GPTQ (9s actual ~8.4s calib)
 
 
 def maybe_compile(fn_or_module, *, enabled: bool, fullgraph: bool, mode: str = ""):
