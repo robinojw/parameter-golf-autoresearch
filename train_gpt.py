@@ -37,9 +37,17 @@ except ImportError:
     # Auto-install brotli on pod (needed for artifact compression)
     try:
         subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "-q", "brotli",
-             "--break-system-packages"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-q",
+                "brotli",
+                "--break-system-packages",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         import brotli as _brotli
 
@@ -112,8 +120,17 @@ def _ensure_data() -> tuple[str, str]:
         try:
             from huggingface_hub import hf_hub_download
         except ImportError:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "-q",
-                                   "huggingface_hub", "--break-system-packages"])
+            subprocess.check_call(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "-q",
+                    "huggingface_hub",
+                    "--break-system-packages",
+                ]
+            )
             from huggingface_hub import hf_hub_download
 
         dl_root = script_dir / "data"
@@ -122,32 +139,41 @@ def _ensure_data() -> tuple[str, str]:
             if local_dest.exists():
                 return
             rp = Path(remote_rel)
-            cached = Path(hf_hub_download(
-                repo_id=_HF_REPO,
-                filename=rp.name,
-                subfolder=rp.parent.as_posix() if rp.parent != Path(".") else None,
-                repo_type="dataset",
-            )).resolve(strict=True)
+            cached = Path(
+                hf_hub_download(
+                    repo_id=_HF_REPO,
+                    filename=rp.name,
+                    subfolder=rp.parent.as_posix() if rp.parent != Path(".") else None,
+                    repo_type="dataset",
+                )
+            ).resolve(strict=True)
             local_dest.parent.mkdir(parents=True, exist_ok=True)
             try:
                 os.link(cached, local_dest)
             except OSError:
                 import shutil
+
                 shutil.copy2(cached, local_dest)
 
         if found_data is None:
             ds_dir = dl_root / "datasets" / _VARIANT
             ds_dir.mkdir(parents=True, exist_ok=True)
-            print(f"Downloading {_N_VAL_SHARDS} val + {_N_TRAIN_SHARDS} train shards from HF...",
-                  flush=True)
+            print(
+                f"Downloading {_N_VAL_SHARDS} val + {_N_TRAIN_SHARDS} train shards from HF...",
+                flush=True,
+            )
             # Download manifest first
             _dl(f"{_HF_PREFIX}/manifest.json", dl_root / "manifest.json")
             for i in range(_N_VAL_SHARDS):
-                _dl(f"{_HF_PREFIX}/datasets/{_VARIANT}/fineweb_val_{i:06d}.bin",
-                    ds_dir / f"fineweb_val_{i:06d}.bin")
+                _dl(
+                    f"{_HF_PREFIX}/datasets/{_VARIANT}/fineweb_val_{i:06d}.bin",
+                    ds_dir / f"fineweb_val_{i:06d}.bin",
+                )
             for i in range(_N_TRAIN_SHARDS):
-                _dl(f"{_HF_PREFIX}/datasets/{_VARIANT}/fineweb_train_{i:06d}.bin",
-                    ds_dir / f"fineweb_train_{i:06d}.bin")
+                _dl(
+                    f"{_HF_PREFIX}/datasets/{_VARIANT}/fineweb_train_{i:06d}.bin",
+                    ds_dir / f"fineweb_train_{i:06d}.bin",
+                )
             found_data = ds_dir
             print(f"Data download complete: {found_data}", flush=True)
 
@@ -165,10 +191,12 @@ def _ensure_data() -> tuple[str, str]:
     os.environ.setdefault("TOKENIZER_PATH", str(found_tok))
     return str(found_data), str(found_tok)
 
+
 # Run data check early (before Hyperparameters class is defined).
 # Only rank 0 downloads; other ranks wait for a sentinel file.
 def _is_rank0() -> bool:
     return int(os.environ.get("LOCAL_RANK", os.environ.get("RANK", "0"))) == 0
+
 
 if _is_rank0():
     _ensure_data()
@@ -185,6 +213,7 @@ else:
     # Now resolve paths for this rank too
     _ensure_data()
 
+
 class Hyperparameters:
     data_path = os.environ.get("DATA_PATH", "./data/datasets/fineweb10B_sp1024")
     train_files = os.path.join(data_path, "fineweb_train_*.bin")
@@ -196,6 +225,8 @@ class Hyperparameters:
     seed = int(os.environ.get("SEED", 1337))
     val_batch_size = int(os.environ.get("VAL_BATCH_SIZE", 524_288))
     val_loss_every = int(os.environ.get("VAL_LOSS_EVERY", 4000))
+    early_eval_step = int(os.environ.get("EARLY_EVAL_STEP", 1000))
+    early_abort_bpb = float(os.environ.get("EARLY_ABORT_BPB", 0))
     train_log_every = int(os.environ.get("TRAIN_LOG_EVERY", 500))
     iterations = int(os.environ.get("ITERATIONS", 20000))
     warmdown_iters = int(os.environ.get("WARMDOWN_ITERS", 3500))
@@ -280,7 +311,9 @@ class Hyperparameters:
     ngram_entropy_shift = bool(int(os.environ.get("NGRAM_ENTROPY_SHIFT", "0")))
     ngram_order_mults_str = os.environ.get("NGRAM_ORDER_MULTS", "")
     cubric_cadence = int(os.environ.get("CUBRIC_CADENCE", 0))
-    p2_loss = bool(int(os.environ.get("P2_LOSS", "0")))  # P2 focal loss disabled — REGRESSION at H100 scale (+0.067 bpb)
+    p2_loss = bool(
+        int(os.environ.get("P2_LOSS", "0"))
+    )  # P2 focal loss disabled — REGRESSION at H100 scale (+0.067 bpb)
     skip_final_eval = bool(int(os.environ.get("SKIP_FINAL_EVAL", "0")))
     post_ema_diagnostic = bool(int(os.environ.get("POST_EMA_DIAGNOSTIC", "1")))
     compile_enabled = bool(int(os.environ.get("COMPILE_ENABLED", "1")))
@@ -1419,7 +1452,7 @@ class GPT(nn.Module):
         self.tied_embed_init_std = tied_embed_init_std
         self.logit_softcap = logit_softcap
         self.value_residual = value_residual
-        self.p2_loss = bool(int(os.environ.get("P2_LOSS", "1")))
+        self.p2_loss = bool(int(os.environ.get("P2_LOSS", "0")))  # DISABLED — confirmed +0.067 regression at H100 scale
         self.mtp_num_heads = mtp_num_heads
         self.mtp_loss_weight = mtp_loss_weight
         self.tok_emb = nn.Embedding(vocab_size, model_dim)
@@ -2251,12 +2284,14 @@ def _decompress(data: bytes) -> bytes:
     # Try brotli first (most common in our pipeline)
     try:
         import brotli
+
         return brotli.decompress(data)
     except (ImportError, Exception):
         pass
     # Try zstd
     try:
         import zstandard
+
         try:
             return zstandard.ZstdDecompressor().decompress(data, max_length=2**33)
         except TypeError:
@@ -2265,6 +2300,7 @@ def _decompress(data: bytes) -> bytes:
         pass
     # Fallback to zlib
     import zlib
+
     return zlib.decompress(data)
 
 
@@ -2934,8 +2970,10 @@ def main() -> None:
         last_step = step == args.iterations or (
             stop_after_step is not None and step >= stop_after_step
         )
-        should_validate = last_step or (
-            args.val_loss_every > 0 and step % args.val_loss_every == 0
+        should_validate = (
+            last_step
+            or (args.val_loss_every > 0 and step % args.val_loss_every == 0)
+            or (args.early_eval_step > 0 and step == args.early_eval_step)
         )
         if should_validate:
             torch.cuda.synchronize()
@@ -2956,6 +2994,16 @@ def main() -> None:
                 f"step:{step}/{args.iterations} val_loss:{val_loss:.4f} val_bpb:{val_bpb:.4f} "
                 f"train_time:{training_time_ms:.0f}ms step_avg:{training_time_ms / max(step, 1):.2f}ms"
             )
+            if (
+                step == args.early_eval_step
+                and args.early_abort_bpb > 0
+                and val_bpb > args.early_abort_bpb
+            ):
+                log0(
+                    f"early_abort: val_bpb {val_bpb:.4f} > threshold {args.early_abort_bpb:.4f} at step {step}. "
+                    f"Aborting to save compute."
+                )
+                stop_after_step = step
             torch.cuda.synchronize()
             t0 = time.perf_counter()
         if last_step:
@@ -3127,7 +3175,9 @@ def main() -> None:
     # --- INT6 GPTQ POST-TRAINING QUANTIZATION ---
     if args.gptq_enabled:
         t_gptq_start = time.perf_counter()
-        quant_path = "final_model.int6.br" if _COMPRESSOR == "brotli" else "final_model.int6.zst"
+        quant_path = (
+            "final_model.int6.br" if _COMPRESSOR == "brotli" else "final_model.int6.zst"
+        )
         log0(
             f"gptq:start compressor={_COMPRESSOR} calib_batches={args.gptq_calib_batches} clip_range={args.gptq_clip_range}"
         )
