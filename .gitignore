@@ -25,13 +25,16 @@ raw_cache.jsonl
 graded_cache.jsonl
 extract_cache.jsonl
 runpod_results/
+logs/
 *.log
 
 # Docs (specs, plans — local only)
 docs/
 
+# Dash
+./dashboard/wrangler.jsonc
+
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -53,3 +56,4 @@ verified_cache.jsonl
 competitor_scores.jsonl
 tournament_runs/
 tournament_results/
+research_state.json

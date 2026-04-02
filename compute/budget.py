@@ -1,5 +1,4 @@
 import json
-import time
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -9,6 +8,7 @@ _KEY_SPENT = "spent"
 _KEY_RESERVE = "min_reserve"
 _KEY_RUNS = "runs"
 _KEY_STARTED = "started_at"
+_KEY_BEST_BPB = "best_h100_bpb"
 _DEFAULT_RESERVE = 50.0
 _SECONDS_PER_HOUR = 3600
 _RESERVE_WARNING_MULTIPLIER = 2
@@ -27,6 +27,7 @@ class BudgetManager:
         self.min_reserve = min_reserve
         self.spent: float = _ZERO_COST
         self.runs: list[dict] = []
+        self.best_h100_bpb: float = 0.0
         if BUDGET_FILE.exists():
             self._load()
         else:
@@ -55,11 +56,15 @@ class BudgetManager:
     def _is_rate_limited(self) -> bool:
         if not self.runs:
             return False
-        last_run_time = self.runs[-1].get(_KEY_STARTED)
-        if not last_run_time:
+        last_started = self.runs[-1].get(_KEY_STARTED, "")
+        if not last_started:
             return False
-        last_ts = datetime.fromisoformat(last_run_time).timestamp()
-        return time.time() - last_ts < _SECONDS_PER_HOUR
+        try:
+            last_time = datetime.fromisoformat(last_started.replace("Z", "+00:00"))
+            elapsed = (datetime.now(timezone.utc) - last_time).total_seconds()
+            return elapsed < _SECONDS_PER_HOUR
+        except (ValueError, TypeError):
+            return False
 
     def record_run(
         self,
@@ -91,6 +96,12 @@ class BudgetManager:
         )
         return cost
 
+    def update_best_bpb(self, val_bpb: float) -> None:
+        """Update the best known H100 val_bpb if this run is better."""
+        if val_bpb > 0 and (self.best_h100_bpb == 0 or val_bpb < self.best_h100_bpb):
+            self.best_h100_bpb = val_bpb
+            self._save()
+
     def status(self) -> dict:
         remaining = self.total_credits - self.spent
         avg_cost = self.spent / len(self.runs) if self.runs else _ZERO_COST
@@ -109,8 +120,11 @@ class BudgetManager:
             _KEY_SPENT: round(self.spent, _COST_ROUND_DIGITS),
             _KEY_RESERVE: self.min_reserve,
             _KEY_RUNS: self.runs,
+            _KEY_BEST_BPB: self.best_h100_bpb,
         }
         BUDGET_FILE.write_text(json.dumps(data, indent=_COST_ROUND_DIGITS))
+        from compute.dashboard import DashboardPusher
+        DashboardPusher().push_budget(data)
 
     def _load(self) -> None:
         data = json.loads(BUDGET_FILE.read_text())
@@ -118,3 +132,4 @@ class BudgetManager:
         self.spent = data[_KEY_SPENT]
         self.min_reserve = data[_KEY_RESERVE]
         self.runs = data[_KEY_RUNS]
+        self.best_h100_bpb = data.get(_KEY_BEST_BPB, 0.0)

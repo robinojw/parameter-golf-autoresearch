@@ -55,6 +55,59 @@ _KEYWORDS: list[str] = [
 
 _VERDICT_ORDER = {"pass": 0, "warn": 1, "block": 2}
 
+# Scale-transfer risk: techniques that behave differently at 500 vs 7000 steps
+_SCALE_RISK_KEYWORDS: dict[str, str] = {
+    # High risk — local MLX validation is unreliable for these
+    "focal_loss": "high", "p2_loss": "high", "label_smoothing": "high",
+    "loss_function": "high", "cross_entropy": "high", "kl_div": "high",
+    "warmdown": "high", "cosine_schedule": "high", "lr_schedule": "high",
+    "learning_rate": "high", "weight_decay": "high",
+    # Medium risk — directionally reliable but magnitude differs
+    "optimizer": "medium", "muon": "medium", "adam": "medium",
+    "momentum": "medium", "gradient_clip": "medium", "grad_scale": "medium",
+    "normalization": "medium", "layernorm": "medium", "rmsnorm": "medium",
+    # Low risk — scale-independent, transfers reliably
+    "compression": "low", "zstd": "low", "brotli": "low", "quantization": "low",
+    "gptq": "low", "ternary": "low", "data_loading": "low", "coprime": "low",
+    "tokenizer": "low", "bigram": "low", "architecture": "low",
+    "attention": "low", "rope": "low", "embedding": "low",
+}
+
+
+def check_scale_transfer_risk(diff_text: str) -> dict:
+    """Assess risk that diff changes behaviour differently at 500 vs 7000 steps."""
+    diff_lower = diff_text.lower()
+    found_risks: dict[str, list[str]] = {"high": [], "medium": [], "low": []}
+
+    for keyword, risk in _SCALE_RISK_KEYWORDS.items():
+        if keyword in diff_lower:
+            found_risks[risk].append(keyword)
+
+    if found_risks["high"]:
+        return {
+            "check": "scale_transfer_risk",
+            "result": "warn",
+            "detail": (
+                f"High scale-transfer risk keywords: {sorted(found_risks['high'])}. "
+                "Local MLX validation may be misleading for these changes."
+            ),
+            "risk_level": "high",
+        }
+    if found_risks["medium"]:
+        return {
+            "check": "scale_transfer_risk",
+            "result": "pass",
+            "detail": f"Medium scale-transfer risk keywords: {sorted(found_risks['medium'])}",
+            "risk_level": "medium",
+        }
+    return {
+        "check": "scale_transfer_risk",
+        "result": "pass",
+        "detail": "No scale-sensitive keywords detected in diff",
+        "risk_level": "low",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Deterministic checks
 # ---------------------------------------------------------------------------
@@ -314,7 +367,10 @@ def run_critique() -> str:
     diff_summary = diff_text[:500]  # use first 500 chars as summary for keyword matching
     checks.append(check_similarity_to_failed(diff_summary, failed))
 
-    # 4. LLM critic (optional — skip gracefully on failure)
+    # 4. Scale-transfer risk assessment
+    checks.append(check_scale_transfer_risk(diff_text))
+
+    # 5. LLM critic (optional — skip gracefully on failure)
     llm_result = _run_llm_critic(diff_text, failed)
     if llm_result is not None:
         llm_verdict = llm_result.get("verdict", "pass")

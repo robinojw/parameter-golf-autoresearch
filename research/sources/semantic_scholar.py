@@ -13,7 +13,6 @@ SEMANTIC_QUERIES = [
     "information theoretic compression neural network",
     "test time training inference compute language model",
 ]
-CITATION_EXPANSION_SCORE_THRESHOLD = 10.0
 CITATION_LOOKBACK_DAYS = 90
 
 API_BASE = "https://api.semanticscholar.org/graph/v1"

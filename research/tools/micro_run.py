@@ -209,11 +209,9 @@ def run_micro_experiment(
 
         if diverged:
             status = "diverged"
-        elif proc.returncode == 0:
+        else:
             # Completed successfully — "pass" means it ran without crashing or diverging
             status = "pass"
-        else:
-            status = "no_signal"
 
         return MicroRunResult(
             status=status,

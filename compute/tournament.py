@@ -11,7 +11,6 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 _TOURNAMENT_RUNS_DIR = Path("tournament_runs")
 _TOURNAMENT_RESULTS_DIR = Path("tournament_results")

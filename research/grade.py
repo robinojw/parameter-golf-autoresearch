@@ -23,7 +23,6 @@ _KEY_ID = "id"
 _KEY_TEXT = "text"
 _KEY_JSON = "json"
 _FENCE_MARKER = "```"
-_PROMPT_SEPARATOR = "\n\n---\n\nItems to grade:\n"
 _PAYLOAD_INDENT = 2
 _ERROR_SCORE = 0.0
 _NEWLINE = "\n"
@@ -48,6 +47,10 @@ GRADING_PROMPT_TEMPLATE = """You are a research grading assistant for a competit
 3. time_compatibility (0-2): does not exceed 10-minute training budget
 4. implementability (0-4): implementable in train_gpt.py in <100 lines, no new deps
 5. novelty (0-3): not already on leaderboard or in competitor submissions; opens new search direction
+6. scale_transfer_risk (0-2, INVERTED — higher is BETTER):
+   0 = HIGH risk: interacts with training dynamics / convergence (loss functions, optimizer schedules, gradient scaling) — may work at 500 steps but fail at 7000 steps
+   1 = MEDIUM risk: partially scale-dependent (architectural changes, normalization)
+   2 = LOW risk: scale-independent (compression, data loading, eval-time tricks, quantization)
 {competitor_validated_dimension}
 Return a JSON array only — one object per item with these keys:
 id, score, score_breakdown, agent_summary (2-3 sentences), flags (string array)
@@ -56,10 +59,10 @@ Do NOT return anything other than the JSON array. No markdown fences, no explana
 
 _MAX_FAILED_IN_PROMPT = 10
 _MAX_COMPETITORS_IN_PROMPT = 10
-_SCORE_BASE = 15
-_SCORE_WITH_COMPETITORS = 17
-_TIER_A_WITH_COMPETITORS = 12
-_TIER_B_WITH_COMPETITORS = 9
+_SCORE_BASE = 17
+_SCORE_WITH_COMPETITORS = 19
+_TIER_A_WITH_COMPETITORS = 14
+_TIER_B_WITH_COMPETITORS = 10
 
 
 def _build_grading_prompt() -> str:
@@ -104,7 +107,7 @@ def _build_grading_prompt() -> str:
 
     max_score = _SCORE_WITH_COMPETITORS if has_competitors else _SCORE_BASE
     competitor_dim = (
-        "6. competitor_validated (0-2): technique validated by competitors with measurable bpb improvement\n"
+        "7. competitor_validated (0-2): technique validated by competitors with measurable bpb improvement\n"
         if has_competitors
         else ""
     )
@@ -121,8 +124,8 @@ def _build_grading_prompt() -> str:
 
 ABSTRACT_TRUNCATE = 800
 SNIPPET_TRUNCATE = 300
-TIER_A_THRESHOLD = 10
-TIER_B_THRESHOLD = 7
+TIER_A_THRESHOLD = 12
+TIER_B_THRESHOLD = 8
 
 
 def _detect_harness() -> str:
@@ -175,7 +178,7 @@ def _run_opencode(prompt: str) -> str:
 
 def _run_claude(prompt: str) -> str:
     result = subprocess.run(
-        [HARNESS_CLAUDE, "-p", prompt, "--output-format", _KEY_JSON, "--bare"],
+        ["quarry", HARNESS_CLAUDE, "-p", prompt, "--output-format", _KEY_JSON],
         capture_output=True,
         text=True,
         timeout=SUBPROCESS_TIMEOUT_SECONDS,
@@ -395,3 +398,5 @@ def _append_graded(items: list[GradedItem]) -> None:
     with open(GRADED_CACHE_PATH, "a") as f:
         for item in items:
             f.write(json.dumps(asdict(item)) + _NEWLINE)
+    from compute.dashboard import DashboardPusher
+    DashboardPusher().push_research([asdict(item) for item in items])

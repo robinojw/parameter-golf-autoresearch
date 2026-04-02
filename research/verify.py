@@ -22,8 +22,8 @@ _TECHNIQUE_NAME_MAX_CHARS = 60
 _FENCE_MARKER = "```"
 _NEWLINE = "\n"
 _DEFAULT_SCORE = 0.0
-_TIER_A_THRESHOLD = 10
-_TIER_B_THRESHOLD = 7
+_TIER_A_THRESHOLD = 12
+_TIER_B_THRESHOLD = 8
 _SEARCH_MAX_RESULTS = 3
 _JSON_PREVIEW_CHARS = 200
 _ENCODING = "utf-8"
@@ -33,7 +33,7 @@ _KEY_ID = "id"
 VERIFICATION_PROMPT_TEMPLATE = (
     "## TASK\n"
     "You are re-evaluating a research item for the Parameter Golf challenge after deep analysis.\n"
-    "You previously scored this item {original_score}/15 based on a brief abstract.\n"
+    "You previously scored this item {original_score}/17 based on a brief abstract.\n"
     "Now you have the full content and verification evidence. Re-evaluate carefully.\n\n"
     "## CHALLENGE CONSTRAINTS (hard — violations = score 0 on size/time dimensions)\n"
     "- Artifact: train_gpt.py code bytes + zstd-compressed weights ≤ 16,000,000 bytes\n"
@@ -43,13 +43,13 @@ VERIFICATION_PROMPT_TEMPLATE = (
     "- Metric: val_bpb on FineWeb — lower is better\n\n"
     "## CURRENT SOTA: {current_best_bpb} bpb\n\n"
     "## ORIGINAL ITEM\nTitle: {title}\nURL: {url}\n"
-    "Original Score: {original_score}/15\nOriginal Score Breakdown: {score_breakdown}\n\n"
+    "Original Score: {original_score}/17\nOriginal Score Breakdown: {score_breakdown}\n\n"
     "## FULL CONTENT\n{full_content_or_abstract}\n\n"
     "## VERIFICATION EVIDENCE\n{verification_results}\n\n"
     "## INSTRUCTIONS\n"
     "Re-evaluate this item. You now have much more context than the initial grading.\n\n"
     "Return a JSON object ONLY with these keys:\n"
-    "- verified_score: float (0-15, your updated score with full context)\n"
+    "- verified_score: float (0-17, your updated score with full context)\n"
     "- implementation_brief: string (3-5 sentences: what exactly to implement in train_gpt.py, "
     "estimated lines, specific approach, key parameters, potential pitfalls)\n"
     "- red_flags: string array (constraints violations, missing dependencies, unclear results, etc.)\n\n"
@@ -102,6 +102,8 @@ def _load_verified_ids() -> set[str]:
 def _append_verified(item: VerifiedItem) -> None:
     with VERIFIED_CACHE_PATH.open("a", encoding=_ENCODING) as f:
         f.write(json.dumps(asdict(item)) + _NEWLINE)
+    from compute.dashboard import DashboardPusher
+    DashboardPusher().push_verified(item.id, item.verified_at)
 
 
 _TITLE_STRIP_PATTERNS = [
@@ -218,7 +220,7 @@ def _regrade_item(
         print(f"[verify] re-grading failed for {graded.id}: {exc}")
         return (
             graded.score,
-            f"Verification re-grading failed ({exc}). Original score {graded.score}/15 retained.",
+            f"Verification re-grading failed ({exc}). Original score {graded.score}/17 retained.",
         )
 
 

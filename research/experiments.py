@@ -10,7 +10,7 @@ RESULTS_TSV_PATH = Path("results.tsv")
 COMPETITOR_SCORES_PATH = Path("competitor_scores.jsonl")
 GRADED_CACHE_PATH = Path("graded_cache.jsonl")
 
-FALLBACK_SOTA: float = 1.1194
+FALLBACK_SOTA: float = 1.1091
 BASELINE_BPB: float = 1.2244
 
 BASELINE_PROVEN_TECHNIQUES: list[str] = [
