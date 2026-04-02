@@ -1,6 +1,6 @@
 # Parameter Golf Autoresearch
 
-<img width="1280" height="1391" alt="cart" src="https://github.com/user-attachments/assets/3fbba136-aa62-495a-85e7-80133bdcd460" />
+<img width="1280" height="1391" alt="cart" src="https://imagedelivery.net/9NdcHDKuHHJulyHNvwystA/573a9e38-6d35-4234-1fab-ac0544b24700/public" />
 
 
 ---
