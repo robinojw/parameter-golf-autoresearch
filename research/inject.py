@@ -9,9 +9,7 @@ from research.experiments import (
     get_experiment_history_bullets,
     get_tier_correlation,
 )
-from research.reflect import STRATEGY_PATH, _read_strategy_md
-
-TECHNIQUE_MAP_PATH = Path("technique_map.json")
+from research.reflect import STRATEGY_PATH, TECHNIQUE_MAP_PATH, _read_strategy_md
 
 
 def inject_into_program_md(
@@ -32,7 +30,7 @@ def inject_into_program_md(
         flag_display = f"[{flags_str}] " if flags_str else ""
 
         bullet = (
-            f"- {flag_display}**{item['title']}** — score {item['score']}/15 ({item.get('published_date', 'n/a')})\n"
+            f"- {flag_display}**{item['title']}** — score {item['score']}/17 ({item.get('published_date', 'n/a')})\n"
             f"  {item.get('agent_summary', '')}\n"
             f"  → {item.get('url', '')}"
         )
@@ -68,6 +66,9 @@ def inject_into_program_md(
     inject_dynamic_baseline(program_md_path)
     inject_strategy_section(program_md_path)
     inject_technique_map_section(program_md_path)
+
+    from compute.dashboard import DashboardPusher
+    DashboardPusher().push_doc("program", program_path.read_text())
 
 
 def inject_experiments_section(program_md_path: str = "program.md") -> None:
@@ -152,7 +153,7 @@ def inject_verified_section(program_md_path: str = "program.md") -> None:
         lines: list[str] = []
         for v in top:
             score_change = (
-                f"{v.get('original_score', 0)}/15 → {v.get('verified_score', 0)}/15"
+                f"{v.get('original_score', 0)}/17 → {v.get('verified_score', 0)}/17"
             )
             brief = v.get("implementation_brief", "")
             sources_count = len(v.get("verification_sources", []))
@@ -237,8 +238,6 @@ def render_technique_tree(data: dict) -> str:
 
     # Root nodes are those not listed as children
     roots = [name for name in nodes if name not in all_children]
-    # Also include orphaned children that reference non-existent parents
-    orphans = [name for name in nodes if name in all_children and name not in nodes]
 
     def _format_node(name: str, indent: int) -> list[str]:
         node_data = nodes.get(name, {})
@@ -292,6 +291,72 @@ def inject_technique_map_section(program_md_path: str = "program.md") -> None:
     program_path.write_text(new_content)
 
 
+def _extract_keywords(text: str) -> set[str]:
+    """Extract lowercased meaningful keywords from a message.
+
+    Strips common stop words and short tokens to produce a set suitable
+    for Jaccard similarity comparison.
+    """
+    _STOP = frozenset({
+        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+        "have", "has", "had", "do", "does", "did", "will", "would", "could",
+        "should", "may", "might", "shall", "can", "to", "of", "in", "for",
+        "on", "with", "at", "by", "from", "as", "into", "through", "during",
+        "before", "after", "above", "below", "between", "and", "but", "or",
+        "nor", "not", "no", "so", "yet", "both", "each", "all", "any", "few",
+        "more", "most", "other", "some", "such", "than", "too", "very", "just",
+        "also", "now", "new", "use", "used", "using", "based", "this", "that",
+        "it", "its", "they", "them", "their", "which", "what", "when", "where",
+        "how", "who", "whom", "if", "then", "else", "about", "up", "out",
+    })
+    tokens = re.findall(r"[a-z0-9_]+", text.lower())
+    return {t for t in tokens if len(t) >= 3 and t not in _STOP}
+
+
+def _is_duplicate(
+    message: str,
+    results_path: Path,
+    window: int = 50,
+    threshold: float = 0.6,
+) -> bool:
+    """Check if *message* is a near-duplicate of a recent research result.
+
+    Compares Jaccard keyword similarity against the last *window* entries.
+    Returns True if any entry exceeds *threshold* overlap.
+    """
+    new_kw = _extract_keywords(message)
+    if not new_kw:
+        return False
+
+    if not results_path.exists():
+        return False
+
+    recent_messages: list[str] = []
+    with open(results_path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+                recent_messages.append(d.get("message", ""))
+            except (json.JSONDecodeError, KeyError):
+                continue
+
+    # Only check the most recent *window* entries
+    for msg_text in recent_messages[-window:]:
+        existing_kw = _extract_keywords(msg_text)
+        if not existing_kw:
+            continue
+        intersection = new_kw & existing_kw
+        union = new_kw | existing_kw
+        jaccard = len(intersection) / len(union)
+        if jaccard >= threshold:
+            return True
+
+    return False
+
+
 def append_to_research_results(
     message: str,
     priority: str = "normal",
@@ -303,15 +368,23 @@ def append_to_research_results(
     Used by the research agent to signal fresh findings to the experiment agent.
     The experiment agent checks this file's timestamps to know if new research
     is available since its last read.
+
+    Performs deduplication: if the message has >= 60% keyword overlap with any
+    of the last 50 entries, it is silently dropped.
     """
     from agents.shared import Message, append_message
+
+    rpath = Path(results_path)
+
+    if _is_duplicate(message, rpath):
+        return
 
     msg = Message(
         message=message,
         priority=priority,
         source_experiment=source_experiment,
     )
-    append_message(Path(results_path), msg)
+    append_message(rpath, msg)
 
 
 def _load_graded_sorted(graded_cache_path: str) -> list[dict]:

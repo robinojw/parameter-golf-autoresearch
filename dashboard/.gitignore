@@ -1,0 +1,8 @@
+node_modules/
+.svelte-kit/
+.cloudflare/
+.wrangler/
+build/
+wrangler.jsonc
+wrangler.toml
+wrangler.json

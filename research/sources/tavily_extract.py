@@ -58,14 +58,4 @@ async def extract_url(url: str) -> str | None:
     return content
 
 
-async def extract_if_needed(
-    item: RawItem,
-    graded_score: float,
-    score_threshold: float = 10.0,
-    snippet_min_length: int = 300,
-) -> str | None:
-    if graded_score < score_threshold:
-        return None
-    if len(item.content_snippet or "") >= snippet_min_length:
-        return None
-    return await extract_url(item.url)
+

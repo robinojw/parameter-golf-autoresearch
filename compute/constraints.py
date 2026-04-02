@@ -6,7 +6,6 @@ disk, calibrates compression ratios and throughput from observed data.
 
 from __future__ import annotations
 
-import csv
 import math
 from pathlib import Path
 
@@ -139,16 +138,12 @@ def training_steps(
     Returns:
         Estimated number of training steps.
     """
-    calibrated = _calibrate_throughput()
-    if calibrated is not None:
-        tokens_per_second = calibrated
-    else:
-        # Theoretical roofline (typically ~30-50% utilization in practice)
-        total_flops = gpu_count * H100_PEAK_TFLOPS_FP16 * 1e12
-        flops_per_token = FLOPS_PER_PARAM_PER_TOKEN * model_params
-        tokens_per_second = total_flops / flops_per_token
-        # Apply realistic utilization factor
-        tokens_per_second *= 0.35
+    # Theoretical roofline (typically ~30-50% utilization in practice)
+    total_flops = gpu_count * H100_PEAK_TFLOPS_FP16 * 1e12
+    flops_per_token = FLOPS_PER_PARAM_PER_TOKEN * model_params
+    tokens_per_second = total_flops / flops_per_token
+    # Apply realistic utilization factor
+    tokens_per_second *= 0.35
 
     tokens_per_step = batch_size * seq_len
     if tokens_per_step <= 0:
@@ -400,17 +395,3 @@ def _calibrate_weight_std() -> float:
 
     concatenated = np.concatenate(all_values)
     return float(np.std(concatenated))
-
-
-def _calibrate_throughput() -> float | None:
-    """Estimate tokens/second from observed training runs in results.tsv.
-
-    Returns None if no calibration data available.
-    """
-    if not _RESULTS_TSV_PATH.exists():
-        return None
-
-    # Look for runpod rows with training_seconds data
-    # We can't get tokens/second directly from results.tsv since it doesn't
-    # store tokens processed. Return None and fall back to theoretical.
-    return None

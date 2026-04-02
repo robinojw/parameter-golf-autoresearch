@@ -1,0 +1,108 @@
+@import 'tailwindcss';
+
+/* --- Font faces --- */
+@font-face {
+	font-family: 'BDO Grotesk';
+	font-weight: 300;
+	font-display: swap;
+	src: url('/pgolf/fonts/BDOGrotesk-Light.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'BDO Grotesk';
+	font-weight: 400;
+	font-display: swap;
+	src: url('/pgolf/fonts/BDOGrotesk-Regular.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'BDO Grotesk';
+	font-weight: 500;
+	font-display: swap;
+	src: url('/pgolf/fonts/BDOGrotesk-Medium.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'BDO Grotesk';
+	font-weight: 600;
+	font-display: swap;
+	src: url('/pgolf/fonts/BDOGrotesk-DemiBold.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'BDO Grotesk';
+	font-weight: 700;
+	font-display: swap;
+	src: url('/pgolf/fonts/BDOGrotesk-Bold.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'BDO Grotesk';
+	font-weight: 800;
+	font-display: swap;
+	src: url('/pgolf/fonts/BDOGrotesk-ExtraBold.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'BDO Grotesk';
+	font-weight: 900;
+	font-display: swap;
+	src: url('/pgolf/fonts/BDOGrotesk-Black.woff2') format('woff2');
+}
+
+/* --- Tailwind v4 theme overrides --- */
+@theme {
+	--radius-xs: 0px;
+	--radius-sm: 0px;
+	--radius-md: 0px;
+	--radius-lg: 0px;
+	--radius-xl: 0px;
+	--radius-2xl: 0px;
+	--radius-3xl: 0px;
+	--radius-4xl: 0px;
+	--font-sans: 'BDO Grotesk', system-ui, sans-serif;
+	--font-mono: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+}
+
+/* --- Color tokens --- */
+:root {
+	--surface: hsl(0 0% 90%);
+	--on-surface: hsl(0 0% 5%);
+	--muted: hsl(0 0% 40%);
+	--edge: hsl(0 0% 78%);
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme='light']) {
+		--surface: hsl(0 0% 5%);
+		--on-surface: hsl(0 0% 90%);
+		--muted: hsl(0 0% 60%);
+		--edge: hsl(0 0% 18%);
+	}
+}
+
+:root[data-theme='dark'] {
+	--surface: hsl(0 0% 5%);
+	--on-surface: hsl(0 0% 90%);
+	--muted: hsl(0 0% 60%);
+	--edge: hsl(0 0% 18%);
+}
+
+/* --- Base styles --- */
+body {
+	background-color: var(--surface);
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	line-height: 1.75;
+}
+
+/* --- Utility classes for design tokens --- */
+@utility bg-surface {
+	background-color: var(--surface);
+}
+@utility bg-edge {
+	background-color: var(--edge);
+}
+@utility text-on-surface {
+	color: var(--on-surface);
+}
+@utility text-muted {
+	color: var(--muted);
+}
+@utility border-edge {
+	border-color: var(--edge);
+}

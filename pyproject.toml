@@ -24,8 +24,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "zstandard>=0.22",
     # RunPod compute layer
-    "runpod>=1.6",
-    "paramiko>=3.4",
+    "requests>=2.31",
     # Tavily web search + extract
     "tavily-python>=0.5",
     "apscheduler>=3.10",
@@ -36,6 +35,9 @@ dev = ["pytest>=8.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["compute*", "research*"]
 
 [build-system]
 requires = ["setuptools>=75.0"]

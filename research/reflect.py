@@ -16,8 +16,6 @@ STRATEGY_PATH = Path("strategy.md")
 TECHNIQUE_MAP_PATH = Path("technique_map.json")
 
 _FRONTMATTER_PATTERN = re.compile(r"^---\n.*?\n---\n", re.DOTALL)
-_ENTRY_HEADER_PATTERN = re.compile(r"(^## \d{4}-\d{2}-\d{2})", re.MULTILINE)
-_FENCE_PATTERN = re.compile(r"^```[a-z]*\n?", re.MULTILINE)
 
 _REQUIRED_KEYS: dict[str, Any] = {
     "failure_patterns": [],
@@ -235,6 +233,8 @@ def _write_strategy_md(
     final_content = frontmatter + body_text + "\n"
 
     strategy_path.write_text(final_content)
+    from compute.dashboard import DashboardPusher
+    DashboardPusher().push_doc("strategy", final_content)
 
 
 def _read_strategy_md(strategy_path: Path = STRATEGY_PATH) -> str:
@@ -293,6 +293,8 @@ def bootstrap_technique_map(technique_map_path: Path = TECHNIQUE_MAP_PATH) -> di
 
     data: dict = {"nodes": nodes, "edges": []}
     technique_map_path.write_text(json.dumps(data, indent=2))
+    from compute.dashboard import DashboardPusher
+    DashboardPusher().push_doc("technique_map", json.dumps(data, indent=2))
     return data
 
 
@@ -343,6 +345,8 @@ def merge_technique_updates(
                 existing_edge_pairs.add(pair)
 
     technique_map_path.write_text(json.dumps(data, indent=2))
+    from compute.dashboard import DashboardPusher
+    DashboardPusher().push_doc("technique_map", json.dumps(data, indent=2))
     return data
 
 

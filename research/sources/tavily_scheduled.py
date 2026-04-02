@@ -5,9 +5,7 @@ from datetime import datetime, timezone
 
 from tavily import TavilyClient
 
-from research.fetch import RawItem
-
-TAVILY_RELEVANCE_THRESHOLD = 0.4
+from research.fetch import RawItem, TAVILY_RELEVANCE_THRESHOLD
 
 SCHEDULED_QUERIES = [
     {
