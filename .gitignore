@@ -29,7 +29,8 @@ logs/
 *.log
 
 # Docs (specs, plans — local only)
-docs/
+docs/*
+!docs/research/
 
 # Dash
 ./dashboard/wrangler.jsonc
