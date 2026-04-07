@@ -1076,6 +1076,358 @@ Total additional cost per research cycle: ~1 Semantic Scholar API call per Tier 
 
 ---
 
+## 16. Anthropic Multi-Agent Research System: Lessons for the Harness
+
+Anthropic published two engineering articles detailing their production multi-agent research system and long-running harness patterns. Several findings directly validate, extend, or challenge decisions in this architecture.
+
+### 16.1 Token Volume Is the Primary Quality Driver
+
+Anthropic's multi-agent research system found that **token usage alone explains 80% of performance variance** on BrowseComp, with tool call count and model choice accounting for only the remaining 20%.
+
+**Implication for this harness**: The research agent's quality is gated more by how many tokens it gets to spend reasoning per cycle than by any individual architectural choice. The current model (fixed 10-source fetch, grading in batches of 10) doesn't adapt token budget to query complexity.
+
+The Anthropic team embedded **explicit effort-scaling rules** in their prompts:
+
+| Query Complexity | Subagents | Tool Calls | Example |
+|---|---|---|---|
+| Simple lookup | 1 | 3-10 | "What is the current SOTA on FineWeb?" |
+| Direct comparison | 2-4 | 10-15 each | "Compare XSA-all vs standard attention at 50M params" |
+| Complex research | 10+ | Divided responsibilities | "Survey all quantization approaches compatible with 16MB artifact" |
+
+**Research harness equivalent**: Leaderboard-stable cycles (no new competitor PRs, no research queue requests) should fetch 2-3 sources and grade shallowly. Cycles triggered by a specific `research_queue.jsonl` request should get the full 10-source pipeline and deep verification. This is a prompt-level change that requires no code modification -- the orchestrator already knows whether the cycle was triggered by a queue request or by the periodic timer.
+
+### 16.2 Start Wide, Then Narrow
+
+Anthropic found that "agents default to overly long, specific queries that return few results." The fix: prompt agents to start with **short, broad queries, evaluate what's available, then progressively narrow focus** -- mirroring expert human research practice.
+
+**Current problem**: The research agent's Tavily queries are likely precise (`"coprime stride loader parameter golf FineWeb"`) when broader queries (`"data loading tricks language model training"`) at step 1 would surface techniques the specific query misses. The narrow query finds exactly what you already know about; the broad query finds what you don't know you're looking for.
+
+**Fix**: A two-phase query strategy in the research agent prompt:
+1. **Phase 1 (broad)**: 2-3 short queries (3-5 words) covering the general technique category
+2. **Phase 2 (narrow)**: Refine based on Phase 1 results, targeting specific implementations or papers
+
+This is a zero-cost prompt engineering change.
+
+### 16.3 Source Quality Validation
+
+Anthropic's human evaluation found that early agents "consistently chose SEO-optimized content farms over authoritative but less highly-ranked sources like academic PDFs or personal blogs." This is the exact problem Section 15.1's source authority tier system addresses -- and the Anthropic finding validates that this is a real, production-level problem that human evaluation caught and automated evals missed.
+
+The authority tier system (Tier 1: arxiv/openreview at 0.30 floor, Tier 2: github/huggingface at 0.40, Tier 3: general web at 0.55) is the correct architectural response. Anthropic's experience confirms it.
+
+### 16.4 JSON Over Markdown for Agent-Writable State Files
+
+The long-running harness article contains a specific finding: **agents are less likely to inappropriately overwrite JSON files than Markdown files**. Anthropic switched from Markdown to JSON for their feature list specifically to prevent agents from editing fields they weren't supposed to touch.
+
+**Current exposure**: `strategy.md` and `decision_state.md` are both Markdown files that agents read and the orchestrator writes. The `technique_map.json` is already JSON (correctly). But `strategy.md` (5 strategy entries, cap-enforced) is a write target for the reflection cycle -- if the experiment agent ever writes to it directly (or if a future multi-turn session starts writing context back), JSON would be safer.
+
+**Recommended change**: Convert `strategy.md` to `strategy.json` with an explicit schema:
+
+```json
+{
+    "entries": [
+        {
+            "technique": "TTT epoch scaling",
+            "rationale": "Expected -0.030 to -0.040 bpb based on PR #1180 evidence",
+            "priority": 1,
+            "status": "pending"
+        }
+    ],
+    "updated_at": "2026-04-06T12:00:00Z",
+    "cycle_count": 15
+}
+```
+
+This makes the structure machine-parseable and prevents agents from accidentally reformatting or expanding the file beyond its intended scope.
+
+### 16.5 Task Boundaries for Parallel Subagents
+
+Section 14's proposal for parallel research delegation (ArXiv subagent, GitHub subagent, competitor subagent in `join_all()`) is architecturally correct, but the Anthropic article documents precisely where this fails: **without detailed task descriptions, subagents duplicate work, leave gaps, or fail to find necessary information**.
+
+They observed two subagents investigating "current 2025 supply chains" while a third explored the 2021 automotive chip crisis -- no effective division of labor.
+
+**Required specification for each delegated subagent**:
+
+| Field | Purpose | Example |
+|---|---|---|
+| **Source domain** | Prevents overlap | "Search only arxiv.org and openreview.net" |
+| **Output format** | Enables structured aggregation | `{findings: [{title, url, score, claimed_improvement}]}` |
+| **Explicit exclusions** | Prevents duplication | "Do not search GitHub; that is covered by another subagent" |
+| **Tool call budget** | Prevents runaway cost | "Maximum 8 tool calls" |
+
+Without item 3 especially, the ArXiv subagent and Semantic Scholar subagent will likely fetch the same papers through different APIs.
+
+### 16.6 The Self-Improving Prompt Loop
+
+Anthropic's most actionable finding: "Claude 4 models can be excellent prompt engineers." They built a tool-testing agent that was given a flawed MCP tool description, attempted to use it, identified the failure modes, and rewrote the tool description -- producing a **40% decrease in task completion time** for future agents.
+
+**Application to this system**: After accumulating 30+ resolved hypotheses and failure critiques, run a one-off self-improvement pass:
+
+1. Feed the experiment agent's prompt (`experiment_agent.md`)
+2. Feed the last 10 failure critiques from `hypotheses.jsonl`
+3. Feed the doom loop events (if any)
+4. Ask Claude to diagnose failure patterns and rewrite the prompt
+
+This is especially valuable for the grading prompt in `grade.py`, which has the highest surface area for LLM error. The grading prompt's 6 dimensions, tier thresholds, and dynamic context injection are all candidates for prompt-level optimization based on empirical grading outcomes.
+
+**Constraint**: This should be a human-reviewed one-off operation, not an automated loop. Automated prompt rewriting without human review risks drift toward prompts that game the evaluation metrics rather than improving actual research quality.
+
+### 16.7 Production Tracing
+
+Anthropic identifies full production tracing as the diagnostic that let them systematically fix agent failures -- before it, "users would report agents 'not finding obvious information,' but we couldn't see why."
+
+**Current state**: The system has a dashboard and the JSONL audit trail (`research_results.jsonl`, `results.tsv`), but no span-level tracing of individual agent decisions.
+
+**Recommended addition**: Instrument the research agent's grade/verify cycle to emit structured trace events:
+
+```json
+{
+    "timestamp": "2026-04-06T12:00:00Z",
+    "stage": "grade",
+    "item_id": "arxiv:2603.28254",
+    "score_before": null,
+    "score_after": 14,
+    "tier": "A",
+    "fail_open": false,
+    "authority_tier": 1,
+    "claims_extracted": 2,
+    "tokens_used": 450,
+    "decision": "promote_to_verify"
+}
+```
+
+Appended to `trace.jsonl` alongside `research_results.jsonl`. This gives the same diagnostic capability Anthropic describes -- when an experiment fails because the research agent missed a key technique, you can trace exactly which fetch query missed it, which grading batch under-scored it, and whether the deduplication step dropped it.
+
+---
+
+## 17. The Initializer Pattern: Structured First-Run Setup
+
+The long-running harness article's core pattern -- **a different prompt for the very first context window** to set up structured state -- maps directly to an unaddressed gap in this system.
+
+### 17.1 The Problem
+
+Currently, the research agent starts every cycle identically. There is no distinction between the first run (where the entire search space needs mapping) and the 50th run (where the search space is well-characterized and only incremental updates matter).
+
+Anthropic's finding: a specialized initializer agent that writes a comprehensive feature list in JSON (marking all features initially "failing") gives subsequent agents a clear, authoritative view of what full success looks like. Without this upfront structure, agents "tended to try to do too much at once" and "declare the job done" prematurely.
+
+The research agent's over-production problem (149 entries, 60 unique in the original run) is exactly this failure mode -- the agent had no authoritative definition of "enough research."
+
+### 17.2 The Three-Agent Initialization Model
+
+| Agent Type | Trigger | Responsibility |
+|---|---|---|
+| **Initializer** (once per competition) | First run, or `technique_map.json` doesn't exist | Write `technique_map.json` skeleton with all known SOTA techniques pre-populated as `promising`; write `research_charter.json` defining the 5 most important research dimensions; validate the full pipeline end-to-end |
+| **Research agent** (on-demand) | `research_queue.jsonl` signal or periodic timer | Fetch, grade, verify, reflect -- against the charter's defined dimensions |
+| **Charter updater** (on major SOTA change) | New leaderboard entrant with >0.03 bpb improvement over current best | Re-runs initializer logic to update the charter with new research directions |
+
+### 17.3 The Research Charter
+
+The initializer produces a `research_charter.json` that defines the search space boundaries:
+
+```json
+{
+    "competition": "parameter-golf",
+    "target_metric": "val_bpb",
+    "current_best": 1.1563,
+    "merged_sota": 1.1147,
+    "gap": 0.0416,
+    "research_dimensions": [
+        {
+            "name": "quantization",
+            "description": "Weight compression techniques that fit within 16MB artifact",
+            "status": "partially_explored",
+            "known_techniques": ["GPTQ INT6", "ternary_quant"],
+            "open_questions": ["Full Hessian GPTQ", "mixed-precision quantization"]
+        },
+        {
+            "name": "eval_time_optimization",
+            "description": "Techniques applied during evaluation, not training",
+            "status": "promising",
+            "known_techniques": ["TTT", "SLOT", "EGGROLL"],
+            "open_questions": ["LoRA TTT", "TTT epoch scaling beyond 10"]
+        }
+    ],
+    "max_research_entries_per_dimension": 5,
+    "completion_criteria": "All dimensions have status 'explored' or 'dead_end'",
+    "created_at": "2026-04-06T12:00:00Z"
+}
+```
+
+The `max_research_entries_per_dimension` field directly addresses the over-production problem: once a dimension has 5 entries, the research agent should stop fetching for that dimension and focus on under-explored ones.
+
+### 17.4 Charter-Driven Research Cycles
+
+With the charter in place, each research cycle becomes targeted:
+
+1. **Read charter**: Identify dimensions with status `partially_explored` or `promising`
+2. **Effort-scale**: If triggered by queue request, full 10-source pipeline; if periodic, 2-3 sources focused on the least-explored dimension
+3. **Broad-first queries**: Start with short queries covering the dimension category, then narrow
+4. **Entry cap enforcement**: Skip dimensions that have reached `max_research_entries_per_dimension`
+5. **Charter update**: After grading, update dimension status based on findings
+
+This transforms the research agent from "find everything about everything" to "fill in the gaps in a structured map of the search space."
+
+---
+
+## 18. Consolidated Harness Design Map
+
+This section consolidates all findings from Sections 9-17 into a single implementation map for building the research harness in a separate repository. Each item is tagged with its evidence source and implementation complexity.
+
+### 18.1 Core Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     ORCHESTRATOR (Rust/Python)                   │
+│  - Event loop with hook system (ForgeCode pattern)              │
+│  - Deterministic routing, zero LLM logic                        │
+│  - Doom loop detection (4 rules)                                │
+│  - Budget management with rate limiting                         │
+│  - Pod lifecycle management                                     │
+│  - Trace event emission to trace.jsonl                          │
+└──────────┬──────────────┬──────────────┬───────────────────────┘
+           │              │              │
+    ┌──────▼──────┐ ┌────▼────┐ ┌──────▼──────┐
+    │ INITIALIZER │ │RESEARCH │ │ EXPERIMENT  │
+    │   AGENT     │ │  AGENT  │ │   AGENT     │
+    │             │ │         │ │             │
+    │ First-run   │ │ Fetch → │ │ Hypothesis →│
+    │ charter +   │ │ Grade → │ │ Implement → │
+    │ technique   │ │ Verify →│ │ Local test →│
+    │ map setup   │ │ Reflect │ │ Promote →   │
+    └─────────────┘ └────┬────┘ │ H100 run    │
+                         │      └──────┬──────┘
+                    ┌────▼────┐  ┌─────▼──────┐
+                    │SUBAGENTS│  │ EVALUATOR  │
+                    │(parallel│  │   AGENT    │
+                    │ fetch)  │  │            │
+                    └─────────┘  │ Grades each│
+                                 │ experiment │
+                                 │ result     │
+                                 └────────────┘
+```
+
+### 18.2 Implementation Priority (Ordered by Evidence of Impact)
+
+| # | Intervention | Evidence Source | Complexity | Expected Impact |
+|---|---|---|---|---|
+| **1** | Enforced hypothesis recording (hook blocks experiment without hypothesis) | ForgeCode: `todo_write` enforcement = 38% -> 66% | Low | Prevents hypothesis-free experimentation; enables learned rules |
+| **2** | Effort-scaling rules in research agent prompt | Anthropic: token volume = 80% of variance | Zero (prompt) | Adapts research depth to query complexity; reduces token waste on stable cycles |
+| **3** | Broad-first query strategy | Anthropic: agents default to overly specific queries | Zero (prompt) | Expands technique discovery surface |
+| **4** | Enforced verification (evaluator grades every result) | ForgeCode: "biggest single improvement"; Anthropic: "strong lever" | Medium | Catches misleading signals before H100 spend |
+| **5** | Source authority tiers | Anthropic: agents chose SEO farms over academic sources; Section 15.1 | **Done** | Filters low-quality content before LLM grading |
+| **6** | Fail-open threshold raise | Section 15.2 | **Done** | Reduces false-positive Tier A for uncertain items |
+| **7** | Claim-level extraction | Section 15.3 | **Done** | Tighter LLM grading; fewer hallucinated assessments |
+| **8** | Forward-citation corroboration | Section 15.4; Anthropic: circular corroboration problem | **Done** | Non-circular validation via structured citations |
+| **9** | Reflection validation against results.tsv | Section 15.5 | **Done** | Prevents compounding strategic errors |
+| **10** | `strategy.md` -> `strategy.json` | Anthropic: agents less likely to overwrite JSON | Low | Prevents accidental agent overwrites of strategy state |
+| **11** | Progressive thinking (high for orientation, low for implementation) | ForgeCode: part of 66% -> 78.4% phase | Medium | ~30-40% token cost reduction per cycle |
+| **12** | Doom loop detection (4 rules) | ForgeCode: `DoomLoopDetector` is a core hook | Medium | Prevents NorMuon-11-entries problem and budget drain |
+| **13** | Research charter + initializer agent | Anthropic: initializer pattern prevents over-production | Medium | Transforms research from "find everything" to "fill gaps in structured map" |
+| **14** | Task boundary specification for parallel subagents | Anthropic: without boundaries, subagents duplicate work | Medium | Required before implementing parallel research delegation |
+| **15** | Span-level trace logging (`trace.jsonl`) | Anthropic: tracing enabled systematic failure diagnosis | Low | Enables root-cause analysis of missed techniques |
+| **16** | Research parallelization (agent-as-tool for independent fetch) | ForgeCode: `join_all()` pattern | High | ~3x faster research cycles |
+| **17** | Multi-turn sessions with compaction | Anthropic: Opus 4.6 can drop sprint construct | High | Maintains intra-session context; reduces spawn overhead |
+| **18** | Self-improving prompt pass | Anthropic: 40% efficiency gain from prompt rewriting | One-off | Optimizes grading prompt based on empirical outcomes |
+
+### 18.3 State Files and Schemas
+
+All agent-writable state files should use JSON with explicit schemas to prevent accidental overwrites:
+
+| File | Format | Writer | Reader | Schema |
+|---|---|---|---|---|
+| `technique_map.json` | JSON | Initializer, Research agent | All agents | `{techniques: [{name, status, parent, evidence, bpb}]}` |
+| `research_charter.json` | JSON | Initializer, Charter updater | Research agent | `{dimensions: [{name, status, known_techniques, open_questions, max_entries}]}` |
+| `strategy.json` | JSON | Reflection cycle | Experiment agent | `{entries: [{technique, rationale, priority, status}], updated_at}` |
+| `decision_state.json` | JSON | Orchestrator | Experiment agent | `{best_bpb, last_experiments, unacked_findings, dead_ends, budget, learned_rules}` |
+| `hypotheses.jsonl` | JSONL | Experiment agent | Evaluator, Reflection | `{id, technique, prediction, basis, scale_risk, outcome, learned_rule}` |
+| `trace.jsonl` | JSONL | All agents | Dashboard, Diagnostics | `{timestamp, stage, item_id, scores, tokens_used, decision}` |
+| `research_results.jsonl` | JSONL | Research agent | Experiment agent | `{timestamp, message, tier, score, source, claims}` |
+| `results.tsv` | TSV | Orchestrator | All agents | Experiment audit trail |
+
+### 18.4 Tool Catalog
+
+Flat schemas with training-aligned naming (ForgeCode evidence: tool naming is a reliability variable):
+
+**Research tools:**
+
+| Tool | Parameters | Returns |
+|---|---|---|
+| `search_papers` | `query: str, source: str, max_results: int` | `[{title, url, abstract, authority_tier}]` |
+| `grade_item` | `title: str, abstract: str, claims: [{type, metric, value}]` | `{score: int, tier: str, dimensions: {}}` |
+| `verify_item` | `item_id: str, full_content: str` | `{verified: bool, evidence: str, citations: int}` |
+| `get_forward_citations` | `paper_url: str` | `{citation_count: int, citing_papers: [str]}` |
+| `extract_claims` | `text: str` | `[{claim_type, metric, value, context}]` |
+
+**Experiment tools:**
+
+| Tool | Parameters | Returns |
+|---|---|---|
+| `record_hypothesis` | `technique: str, prediction: str, basis: str, scale_risk: str` | `{id: str}` |
+| `resolve_hypothesis` | `id: str, outcome: str, learned_rule: str` | `{updated: bool}` |
+| `run_local_experiment` | `script: str, changes: str` | `{val_bpb: float, steps: int, time_s: float}` |
+| `promote_to_h100` | `hypothesis_id: str, script: str` | `{queued: bool, estimated_cost: float}` |
+| `ack_research` | `result_line: int, action: str` | `{acked: bool}` |
+
+**Evaluation tools:**
+
+| Tool | Parameters | Returns |
+|---|---|---|
+| `grade_experiment` | `hypothesis_id: str, predicted_bpb: float, actual_bpb: float, artifact_kb: int` | `{verdict: str, score: float, critique: str}` |
+| `check_scale_transfer` | `technique: str, local_bpb: float, local_steps: int` | `{risk: str, confidence: float, similar_failures: [str]}` |
+| `check_contamination` | `script_path: str` | `{clean: bool, issues: [str]}` |
+
+**Infrastructure tools:**
+
+| Tool | Parameters | Returns |
+|---|---|---|
+| `get_budget` | (none) | `{spent: float, remaining: float, best_bpb: float, rate_limited: bool}` |
+| `get_technique_map` | `status_filter: str` | `[{name, status, evidence, bpb}]` |
+| `get_decision_state` | (none) | Full decision state JSON |
+| `emit_trace` | `stage: str, item_id: str, decision: str, tokens: int` | `{logged: bool}` |
+
+### 18.5 Evaluator Agent Design
+
+The evaluator is a separate agent (not a function call within the experiment agent) that grades each experiment result independently:
+
+**Grading criteria** (5 dimensions, /20):
+
+| Dimension | Range | Weight | What It Measures |
+|---|---|---|---|
+| `hypothesis_quality` | 0-4 | 1.0 | Was the hypothesis specific, testable, and grounded in evidence? |
+| `implementation_fidelity` | 0-4 | 1.0 | Did the code change match the hypothesis? (AST diff analysis) |
+| `metric_movement` | 0-4 | 1.5 | Did val_bpb improve, and by how much relative to prediction? |
+| `constraint_compliance` | 0-4 | 1.0 | Artifact size, training time, memory usage within limits? |
+| `transferability_signal` | 0-4 | 0.5 | Does the local result predict H100 behavior? (based on technique category) |
+
+**Hard thresholds** (any of these blocks promotion regardless of total score):
+- `constraint_compliance < 2` -> block (artifact or time violation)
+- `hypothesis_quality == 0` -> block (no hypothesis recorded)
+- `metric_movement == 0 AND implementation_fidelity < 2` -> block (no improvement and questionable implementation)
+
+**Calibration strategy**: After 20 experiments, compute correlation between evaluator scores and actual H100 outcomes. If correlation < 0.6, trigger the self-improving prompt pass on the evaluator's grading criteria.
+
+### 18.6 Doom Loop Detection Rules
+
+| Rule | Trigger | Action |
+|---|---|---|
+| `technique_repetition` | Same technique keyword appears in 3+ consecutive hypotheses | Inject: "You have tried {technique} 3 times. The technique map shows it as {status}. Try a different dimension." |
+| `scale_transfer_blindness` | 2+ H100 regressions from techniques that passed local validation | Inject: "Your last 2 H100 promotions regressed. Review scale-transfer risk before promoting again." |
+| `budget_drain` | 3+ consecutive H100 runs with no improvement | Inject: "You have spent ${cost} on 3 consecutive non-improving runs. Switch to local-only experimentation until you find a strong signal." |
+| `hypothesis_free` | Experiment started without `record_hypothesis` call | Block: "You must record a hypothesis before running an experiment." |
+
+### 18.7 Success Metrics
+
+| Metric | Baseline (from Section 7) | Target | How to Measure |
+|---|---|---|---|
+| Wasted H100 runs (regressions) | 44% (4/9) | < 20% | Count H100 runs where val_bpb worsened |
+| Misleading local signals | 26% of spend ($20.88) | < 10% of spend | Track techniques that pass local but fail H100 |
+| Research duplication | 60% redundancy (149 entries, ~60 unique) | < 20% redundancy | Jaccard similarity check on new entries |
+| Hypothesis coverage | 0% (no tracking existed) | 100% | Every experiment must have a recorded hypothesis |
+| Learned rules accumulated | 0 | 5+ per 20 experiments | Count resolved hypotheses with learned rules |
+| Experiments per dollar | ~0.23 ($79.83 / 18 experiments) | > 0.5 | Total experiments / total spend |
+| Time to new best | ~6 experiments between improvements | < 4 experiments | Count experiments between each new best val_bpb |
+
+---
+
 ## Sources and References
 
 - Karpathy's autoresearch: https://github.com/karpathy/autoresearch
@@ -1093,3 +1445,4 @@ Total additional cost per research cycle: ~1 Semantic Scholar API call per Tier 
 - Multi-agent fact-checking with KG-structured verification: https://www.nature.com/articles/s41598-026-41862-z
 - Agentic RAG hallucination reduction: https://arxiv.org/html/2603.00267v1
 - Agentic RAG enterprise patterns: https://arxiv.org/abs/2603.01486
+- Anthropic multi-agent research system: https://www.anthropic.com/engineering/multi-agent-research-system
