@@ -7,6 +7,65 @@ from pathlib import Path
 RAW_CACHE_PATH = Path("raw_cache.jsonl")
 TAVILY_RELEVANCE_THRESHOLD = 0.4
 
+# ---------------------------------------------------------------------------
+# Source authority tiers — deterministic, zero LLM tokens
+# ---------------------------------------------------------------------------
+# Tier 1: peer-reviewed / structured academic sources — low relevance floor
+# Tier 2: curated community sources — moderate relevance floor
+# Tier 3: general web — high relevance floor (most noise)
+_AUTHORITY_TIER_1_DOMAINS = frozenset({
+    "arxiv.org",
+    "openreview.net",
+    "semanticscholar.org",
+    "aclweb.org",
+    "proceedings.mlr.press",   # ICML / AISTATS
+    "papers.nips.cc",          # NeurIPS
+    "jmlr.org",
+})
+_AUTHORITY_TIER_2_DOMAINS = frozenset({
+    "github.com",
+    "huggingface.co",
+    "paperswithcode.com",
+})
+# Everything else is Tier 3
+
+_AUTHORITY_TIER_1_SOURCES = frozenset({
+    "arxiv", "openreview", "semantic_scholar",
+})
+_AUTHORITY_TIER_2_SOURCES = frozenset({
+    "github_prs", "github_code_search", "feeds",
+})
+
+# Relevance floor per authority tier (items below this are dropped)
+AUTHORITY_RELEVANCE_FLOORS = {
+    1: 0.3,   # Tier 1: academic — low floor, high trust
+    2: 0.4,   # Tier 2: community — moderate floor
+    3: 0.65,  # Tier 3: general web — high floor, most noise
+}
+
+
+def get_authority_tier(item: "RawItem") -> int:
+    """Classify an item into authority tier 1/2/3 based on source and URL domain.
+
+    Deterministic, zero LLM tokens. Used by the pre-filter and grading pipeline.
+    """
+    # Check source field first (set during fetch)
+    if item.source in _AUTHORITY_TIER_1_SOURCES:
+        return 1
+    if item.source in _AUTHORITY_TIER_2_SOURCES:
+        return 2
+
+    # Fall back to URL domain matching
+    url_lower = item.url.lower()
+    for domain in _AUTHORITY_TIER_1_DOMAINS:
+        if domain in url_lower:
+            return 1
+    for domain in _AUTHORITY_TIER_2_DOMAINS:
+        if domain in url_lower:
+            return 2
+
+    return 3
+
 
 @dataclass
 class RawItem:
@@ -21,6 +80,7 @@ class RawItem:
     content_snippet: str = ""
     raw_type: str = "paper"
     tavily_score: float = 0.0
+    authority_tier: int = 0  # 0 = unclassified, 1/2/3 = classified by get_authority_tier()
 
 
 @dataclass
@@ -93,12 +153,16 @@ def _dedup_and_cache(results: list) -> list[RawItem]:
             is_new = item.id not in existing_ids and item.id not in seen_ids
             if not is_new:
                 continue
-            below_tavily_threshold = (
-                item.tavily_score > 0 and item.tavily_score < TAVILY_RELEVANCE_THRESHOLD
-            )
-            if below_tavily_threshold:
-                continue
+            # Authority-tier-aware relevance floor
+            if item.tavily_score > 0:
+                tier = get_authority_tier(item)
+                floor = AUTHORITY_RELEVANCE_FLOORS.get(tier, TAVILY_RELEVANCE_THRESHOLD)
+                if item.tavily_score < floor:
+                    continue
             seen_ids.add(item.id)
+            # Stamp authority tier for downstream use
+            if item.authority_tier == 0:
+                item.authority_tier = get_authority_tier(item)
             all_items.append(item)
 
     _append_to_cache(all_items)

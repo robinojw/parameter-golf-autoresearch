@@ -45,6 +45,7 @@ VERIFICATION_PROMPT_TEMPLATE = (
     "## ORIGINAL ITEM\nTitle: {title}\nURL: {url}\n"
     "Original Score: {original_score}/17\nOriginal Score Breakdown: {score_breakdown}\n\n"
     "## FULL CONTENT\n{full_content_or_abstract}\n\n"
+    "{claims_section}"
     "## VERIFICATION EVIDENCE\n{verification_results}\n\n"
     "## INSTRUCTIONS\n"
     "Re-evaluate this item. You now have much more context than the initial grading.\n\n"
@@ -174,28 +175,87 @@ async def _extract_full_content(raw: RawItem) -> tuple[str, bool]:
 
 
 def _collect_verification_evidence(
-    title: str, abstract: str
+    title: str, abstract: str, item_id: str = ""
 ) -> tuple[list[str], list[str]]:
+    """Collect corroborating evidence from multiple sources.
+
+    Uses Tavily web search for one query, and Semantic Scholar forward
+    citations for items with an S2 paper ID. This avoids circular
+    web-based corroboration — citation graph evidence is structured
+    and independent of the original web fetch.
+    """
     from research.sources.tavily_agent import agent_search
     queries = _generate_verification_queries(title, abstract)
     results_parts: list[str] = []
     sources: list[str] = []
-    for query in queries:
+
+    # Source 1: Tavily web search (first query only — second replaced by citation check)
+    if queries:
         try:
             result_md = agent_search(
-                query, depth="basic", max_results=_SEARCH_MAX_RESULTS
+                queries[0], depth="basic", max_results=_SEARCH_MAX_RESULTS
             )
             results_parts.append(result_md)
             sources.extend(re.findall(r"\[.*?\]\((https?://[^\)]+)\)", result_md))
         except Exception as exc:
-            print(f"[verify] search failed for query '{query}': {exc}")
-            results_parts.append(f"(search failed: {exc})")
+            print(f"[verify] web search failed for query '{queries[0]}': {exc}")
+            results_parts.append(f"(web search failed: {exc})")
+
+    # Source 2: Semantic Scholar forward citations (structured, non-circular)
+    s2_paper_id = ""
+    if item_id.startswith("s2:"):
+        s2_paper_id = item_id[3:]
+    elif item_id.startswith("arxiv:"):
+        # S2 can look up by arxiv ID
+        s2_paper_id = f"ARXIV:{item_id[6:]}"
+
+    if s2_paper_id:
+        try:
+            import asyncio
+            from research.sources.semantic_scholar import (
+                get_forward_citations,
+                format_citation_evidence,
+            )
+            citations = asyncio.get_event_loop().run_until_complete(
+                get_forward_citations(s2_paper_id)
+            )
+            citation_text = format_citation_evidence(citations)
+            if citation_text:
+                results_parts.append(citation_text)
+                sources.extend(
+                    c.get("url", "") for c in citations[:5] if c.get("url")
+                )
+            else:
+                results_parts.append("(no forward citations found in Semantic Scholar)")
+        except Exception as exc:
+            print(f"[verify] citation lookup failed for {s2_paper_id}: {exc}")
+            results_parts.append(f"(citation lookup failed: {exc})")
+    else:
+        # Fall back to second Tavily query for non-academic items
+        if len(queries) > 1:
+            try:
+                result_md = agent_search(
+                    queries[1], depth="basic", max_results=_SEARCH_MAX_RESULTS
+                )
+                results_parts.append(result_md)
+                sources.extend(re.findall(r"\[.*?\]\((https?://[^\)]+)\)", result_md))
+            except Exception as exc:
+                print(f"[verify] search failed for query '{queries[1]}': {exc}")
+                results_parts.append(f"(search failed: {exc})")
+
     return results_parts, sources
 
 
 def _regrade_item(
     raw: RawItem, graded: GradedItem, full_content: str, evidence: str
 ) -> tuple[float, str]:
+    from research.extract_claims import extract_claims, format_claims_for_grading
+
+    # Extract structured claims from the full content (deterministic, zero tokens)
+    claims = extract_claims(full_content)
+    claims_text = format_claims_for_grading(claims)
+    claims_section = f"## EXTRACTED CLAIMS\n{claims_text}\n\n" if claims_text else ""
+
     prompt = VERIFICATION_PROMPT_TEMPLATE.format(
         original_score=graded.score,
         current_best_bpb=get_current_best_bpb(),
@@ -203,6 +263,7 @@ def _regrade_item(
         url=raw.url,
         score_breakdown=json.dumps(graded.score_breakdown),
         full_content_or_abstract=full_content[:_FULL_CONTENT_MAX_CHARS],
+        claims_section=claims_section,
         verification_results=evidence[:_VERIFICATION_RESULTS_MAX_CHARS],
     )
     try:
@@ -227,7 +288,7 @@ def _regrade_item(
 async def _verify_single_item(graded: GradedItem, raw: RawItem) -> VerifiedItem:
     full_content, full_content_available = await _extract_full_content(raw)
     results_parts, verification_sources = _collect_verification_evidence(
-        raw.title, raw.abstract
+        raw.title, raw.abstract, item_id=graded.id
     )
     verified_score, implementation_brief = _regrade_item(
         raw,

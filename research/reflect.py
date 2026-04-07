@@ -201,6 +201,13 @@ def _format_entry(entry: dict) -> str:
             lines.append(f"- {idea} — {rationale} (est. impact: {impact})")
         lines.append("")
 
+    validation_warnings = entry.get("validation_warnings", [])
+    if validation_warnings:
+        lines.append("**Validation warnings** (discrepancies with results.tsv):")
+        for w in validation_warnings:
+            lines.append(f"- {w}")
+        lines.append("")
+
     return "\n".join(lines)
 
 
@@ -350,6 +357,92 @@ def merge_technique_updates(
     return data
 
 
+def _validate_reflection_against_results(
+    parsed: dict,
+    rows: list,
+) -> dict:
+    """Deterministic audit of reflection conclusions against empirical results.
+
+    Checks:
+    1. technique_updates: if a technique is marked dead_end, verify it actually
+       has discard/crash results. If marked proven, verify it has keep results.
+    2. failure_patterns: verify mentioned techniques actually appear in failed experiments.
+    3. promising_dimensions: flag if a "promising" direction has already been tried and failed.
+
+    Modifies parsed in-place, adding a "validation_warnings" key with any discrepancies.
+    Returns the modified dict.
+    """
+    warnings_list: list[str] = []
+
+    # Build lookup sets from actual results
+    failed_descriptions = {
+        r.description.lower()
+        for r in rows
+        if r.status.lower() in ("discard", "crash")
+    }
+    kept_descriptions = {
+        r.description.lower()
+        for r in rows
+        if r.status.lower() == "keep"
+    }
+    all_descriptions = {r.description.lower() for r in rows}
+
+    # Validate technique_updates
+    for update in parsed.get("technique_updates", []):
+        node = update.get("node", "").lower()
+        status = update.get("status", "").lower()
+        if not node:
+            continue
+
+        if status == "dead_end":
+            # Check if any experiment with this technique actually failed
+            has_failure = any(node in desc for desc in failed_descriptions)
+            if not has_failure and all_descriptions:
+                warnings_list.append(
+                    f"technique '{update['node']}' marked dead_end but no matching "
+                    f"failed experiments found in results.tsv"
+                )
+
+        elif status == "proven":
+            # Check if any experiment with this technique was kept
+            has_keep = any(node in desc for desc in kept_descriptions)
+            if not has_keep and all_descriptions:
+                warnings_list.append(
+                    f"technique '{update['node']}' marked proven but no matching "
+                    f"kept experiments found in results.tsv"
+                )
+
+    # Validate promising_dimensions against already-failed experiments
+    for dimension in parsed.get("promising_dimensions", []):
+        dim_lower = dimension.lower()
+        # Extract key words from the dimension (skip common words)
+        dim_words = {w for w in dim_lower.split() if len(w) >= 3 and w not in (
+            "the", "and", "for", "with", "new", "more", "improvements",
+        )}
+        if not dim_words:
+            continue
+        # Check if this "promising" direction has already been tried and failed
+        matching_failures = []
+        for d in failed_descriptions:
+            # Match if at least 2 key words from the dimension appear in the failure
+            matches = sum(1 for w in dim_words if w in d)
+            if matches >= min(2, len(dim_words)):
+                matching_failures.append(d)
+        if len(matching_failures) >= 2:
+            warnings_list.append(
+                f"promising dimension '{dimension}' has {len(matching_failures)} "
+                f"matching failed experiments — may be exhausted"
+            )
+
+    parsed["validation_warnings"] = warnings_list
+    if warnings_list:
+        print(f"[reflect:validate] {len(warnings_list)} discrepancies found:")
+        for w in warnings_list:
+            print(f"  - {w}")
+
+    return parsed
+
+
 async def run_reflection_cycle(
     strategy_path: Path = STRATEGY_PATH,
     technique_map_path: Path = TECHNIQUE_MAP_PATH,
@@ -393,6 +486,10 @@ async def run_reflection_cycle(
 
     response_text = _run_reflection_prompt(prompt)
     parsed = _parse_reflection_response(response_text)
+
+    # Deterministic validation: audit LLM conclusions against actual results
+    parsed = _validate_reflection_against_results(parsed, rows)
+
     _write_strategy_md(parsed, strategy_path=strategy_path)
 
     technique_updates = parsed.get("technique_updates", [])

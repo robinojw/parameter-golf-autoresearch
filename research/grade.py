@@ -226,32 +226,52 @@ def _extract_json_array(text: str) -> list[dict]:
 
 
 def _build_batch_payload(batch: list[RawItem]) -> str:
+    from research.extract_claims import extract_claims, format_claims_for_grading
+
     payload = []
     for item in batch:
-        payload.append(
-            {
-                _KEY_ID: item.id,
-                "source": item.source,
-                "title": item.title,
-                "abstract": item.abstract[:ABSTRACT_TRUNCATE],
-                "url": item.url,
-                "raw_type": item.raw_type,
-                "content_snippet": item.content_snippet[:SNIPPET_TRUNCATE],
-            }
-        )
+        # Extract structured claims (deterministic, zero tokens)
+        claims = extract_claims(f"{item.title} {item.abstract}")
+        claims_text = format_claims_for_grading(claims)
+
+        entry = {
+            _KEY_ID: item.id,
+            "source": item.source,
+            "title": item.title,
+            "abstract": item.abstract[:ABSTRACT_TRUNCATE],
+            "url": item.url,
+            "raw_type": item.raw_type,
+            "content_snippet": item.content_snippet[:SNIPPET_TRUNCATE],
+        }
+        if claims_text:
+            entry["extracted_claims"] = claims_text
+        payload.append(entry)
     return json.dumps(payload, indent=_PAYLOAD_INDENT)
 
 
-def _score_to_tier(score: float, has_competitors: bool = False) -> str:
+# Fail-open items require higher scores for Tier A/B (lower confidence in relevance)
+_FAIL_OPEN_TIER_A_PENALTY = 2  # +2 points required (e.g. 12 -> 14 for base /17)
+_FAIL_OPEN_TIER_B_PENALTY = 1  # +1 point required
+
+
+def _score_to_tier(score: float, has_competitors: bool = False, fail_open: bool = False) -> str:
+    """Classify a score into tier A/B/C.
+
+    If fail_open=True, the item failed deterministic extraction and carries
+    higher uncertainty — Tier A/B thresholds are raised to compensate.
+    """
+    penalty_a = _FAIL_OPEN_TIER_A_PENALTY if fail_open else 0
+    penalty_b = _FAIL_OPEN_TIER_B_PENALTY if fail_open else 0
+
     if has_competitors:
-        if score >= _TIER_A_WITH_COMPETITORS:
+        if score >= _TIER_A_WITH_COMPETITORS + penalty_a:
             return "A"
-        if score >= _TIER_B_WITH_COMPETITORS:
+        if score >= _TIER_B_WITH_COMPETITORS + penalty_b:
             return "B"
         return "C"
-    if score >= TIER_A_THRESHOLD:
+    if score >= TIER_A_THRESHOLD + penalty_a:
         return "A"
-    if score >= TIER_B_THRESHOLD:
+    if score >= TIER_B_THRESHOLD + penalty_b:
         return "B"
     return "C"
 
@@ -273,16 +293,18 @@ def prefilter_infeasible(items: list[RawItem]) -> dict:
 
     Attempts to extract params and bits from title + abstract.
     If both are found and feasibility_report says infeasible, reject.
-    If extraction fails, pass through (fail-open).
+    If extraction fails, pass through (fail-open) but flag the item
+    so downstream grading can apply a higher threshold.
 
     Returns:
-        {"passed": [...], "rejected": [...]}
+        {"passed": [...], "rejected": [...], "fail_open_ids": set[str]}
     """
     from research.extract_params import extract_params
     from compute.constraints import feasibility_report
 
     passed = []
     rejected = []
+    fail_open_ids: set[str] = set()
 
     for item in items:
         text = f"{item.title} {item.abstract}"
@@ -295,13 +317,18 @@ def prefilter_infeasible(items: list[RawItem]) -> dict:
             if not report["feasible"]:
                 rejected.append(item)
                 continue
+        else:
+            # Extraction failed — item passes through but is flagged
+            fail_open_ids.add(item.id)
 
         passed.append(item)
 
     if rejected:
         print(f"[grade:prefilter] Rejected {len(rejected)} infeasible items")
+    if fail_open_ids:
+        print(f"[grade:prefilter] {len(fail_open_ids)} items passed via fail-open (higher grading threshold)")
 
-    return {"passed": passed, "rejected": rejected}
+    return {"passed": passed, "rejected": rejected, "fail_open_ids": fail_open_ids}
 
 
 def grade_items(items: list[RawItem]) -> list[GradedItem]:
@@ -314,6 +341,7 @@ def grade_items(items: list[RawItem]) -> list[GradedItem]:
     # Pre-filter: reject mathematically infeasible items before LLM grading
     filter_result = prefilter_infeasible(to_grade)
     to_grade = filter_result["passed"]
+    fail_open_ids = filter_result["fail_open_ids"]
     rejected_graded = [
         GradedItem(
             id=item.id, score=0, tier="C",
@@ -348,14 +376,16 @@ def grade_items(items: list[RawItem]) -> list[GradedItem]:
                 graded_result = response_map.get(item.id)
                 if graded_result:
                     score = float(graded_result.get("score", 0))
+                    is_fail_open = item.id in fail_open_ids
                     graded.append(
                         GradedItem(
                             id=item.id,
                             score=score,
-                            tier=_score_to_tier(score, has_competitors),
+                            tier=_score_to_tier(score, has_competitors, fail_open=is_fail_open),
                             score_breakdown=graded_result.get("score_breakdown", {}),
                             agent_summary=graded_result.get("agent_summary", ""),
-                            flags=graded_result.get("flags", []),
+                            flags=graded_result.get("flags", [])
+                            + (["fail_open"] if is_fail_open else []),
                         )
                     )
                 else:

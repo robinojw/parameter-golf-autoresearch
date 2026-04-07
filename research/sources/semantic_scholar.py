@@ -27,6 +27,10 @@ MATH_KEYWORDS = ["entropy", "information theory", "coding theory"]
 INFRA_KEYWORDS = ["gpu", "kernel", "hardware", "accelerator"]
 _KEY_PAPER_ID = "paperId"
 
+# Forward citation check fields
+CITATION_FIELDS = "title,abstract,url,publicationDate,citationCount"
+MAX_FORWARD_CITATIONS = 10
+
 
 def _is_too_old(pub_date_str: str) -> bool:
     if not pub_date_str:
@@ -120,3 +124,78 @@ async def fetch_semantic_scholar(
                 items.append(item)
 
     return items
+
+
+async def get_forward_citations(paper_id: str) -> list[dict]:
+    """Fetch papers that cite the given paper (forward citations).
+
+    Uses the Semantic Scholar API citations endpoint. Returns a list of
+    dicts with keys: title, abstract, url, publicationDate, citationCount.
+
+    This is a structured, deterministic corroboration source — not circular
+    with web search. If a paper's claims are cited by subsequent work,
+    that's meaningful quality signal.
+
+    Args:
+        paper_id: Semantic Scholar paper ID (e.g. "abc123" from "s2:abc123")
+
+    Returns:
+        List of citing paper dicts, sorted by citation count descending.
+        Empty list on error or no citations.
+    """
+    api_key = os.environ.get("S2_API_KEY", "")
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["x-api-key"] = api_key
+
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, headers=headers) as client:
+        try:
+            resp = await client.get(
+                f"{API_BASE}/paper/{paper_id}/citations",
+                params={
+                    "fields": CITATION_FIELDS,
+                    "limit": MAX_FORWARD_CITATIONS,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            print(f"[semantic_scholar] forward citation lookup failed for {paper_id}: {exc}")
+            return []
+
+    citations = []
+    for entry in data.get("data", []):
+        citing_paper = entry.get("citingPaper", {})
+        if not citing_paper.get("title"):
+            continue
+        citations.append({
+            "title": citing_paper.get("title", ""),
+            "abstract": (citing_paper.get("abstract") or "")[:500],
+            "url": citing_paper.get("url", ""),
+            "publicationDate": citing_paper.get("publicationDate", ""),
+            "citationCount": citing_paper.get("citationCount", 0),
+        })
+
+    # Sort by citation count descending (most-cited first)
+    citations.sort(key=lambda x: x.get("citationCount", 0), reverse=True)
+    return citations
+
+
+def format_citation_evidence(citations: list[dict]) -> str:
+    """Format forward citations as a markdown evidence block for verification.
+
+    Returns empty string if no citations.
+    """
+    if not citations:
+        return ""
+    lines = [f"**Forward citations ({len(citations)} papers cite this work):**"]
+    for i, c in enumerate(citations[:5], 1):
+        cite_count = c.get("citationCount", 0)
+        lines.append(
+            f"  {i}. [{c['title']}]({c.get('url', '')}) "
+            f"— {cite_count} citations, {c.get('publicationDate', 'n/a')}"
+        )
+        abstract = c.get("abstract", "")
+        if abstract:
+            lines.append(f"     > {abstract[:200]}")
+    return "\n".join(lines)

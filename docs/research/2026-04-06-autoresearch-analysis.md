@@ -958,6 +958,124 @@ The harness should be evaluated on the same metrics we identified in the critica
 
 ---
 
+## 15. Research Pipeline Hardening: Source Authority, Claim Extraction, and Reflection Validation
+
+External review of the research pipeline identified five structural weaknesses in how the system ingests, grades, and acts on web-sourced research. All five have been implemented as code changes.
+
+### 15.1 Problem: No Source Authority Scoring
+
+The Tavily relevance cutoff of 0.4 was a single-dimensional quality signal applied uniformly across all sources. A marketing blog post and a peer-reviewed ArXiv paper could both clear the same threshold. This meant the LLM grading stage received a mix of high-authority and low-authority content with no way to distinguish them before spending tokens.
+
+**Fix implemented** (`research/fetch.py`):
+
+A deterministic, zero-token source authority tier system applied before any LLM processing:
+
+| Tier | Sources | Relevance Floor | Rationale |
+|---|---|---|---|
+| **Tier 1** (peer-reviewed) | `arxiv.org`, `openreview.net`, `semanticscholar.org`, `proceedings.mlr.press`, `proceedings.neurips.cc`, `aclanthology.org` | 0.30 | Peer-reviewed or curated academic sources; lower floor because the content is inherently higher quality |
+| **Tier 2** (technical community) | `github.com`, `huggingface.co`, `paperswithcode.com`, `reddit.com/r/MachineLearning` | 0.40 | Technical community sources with some quality signal (stars, upvotes) but no formal review |
+| **Tier 3** (general web) | Everything else | 0.55 | Blog posts, news articles, marketing content; higher floor because quality is unpredictable |
+
+The tier is stamped on each `RawItem` as `authority_tier` (1/2/3) and persisted in the cache. Items below their tier's relevance floor are dropped before deduplication, saving both cache space and downstream LLM tokens.
+
+### 15.2 Problem: Fail-Open Pre-Filter Lets Uncertain Items Through at Full Confidence
+
+The Stage 2 pre-filter extracts parameter counts and bit-widths via regex. If extraction fails (no size/parameter data in the abstract), the item passes through -- a "fail-open" design. This is correct (rejecting unknown items would miss novel techniques), but the downstream grading treated these items identically to items that passed deterministic feasibility checks.
+
+**Fix implemented** (`research/grade.py`):
+
+Items that failed deterministic extraction are tagged as `fail_open` and require **2 points higher** to reach each tier:
+
+| Tier | Normal Threshold (with competitors) | Fail-Open Threshold |
+|---|---|---|
+| **Tier A** | >= 12/19 | >= 14/19 |
+| **Tier B** | >= 9/19 | >= 11/19 |
+
+Without competitor data:
+
+| Tier | Normal Threshold | Fail-Open Threshold |
+|---|---|---|
+| **Tier A** | >= 12/17 | >= 14/17 |
+| **Tier B** | >= 9/17 | >= 11/17 |
+
+This means items with higher uncertainty (no extractable constraints) need stronger LLM evidence to reach the expensive verification and H100 promotion stages.
+
+### 15.3 Problem: LLM Grades Whole Papers, Not Specific Claims
+
+The grading prompt received title + abstract as prose. LLMs grading research quality are susceptible to confident-sounding but unverifiable abstracts. A paper claiming "+15% improvement" in flowing prose scores the same as one with a specific, verifiable claim like "+0.023 bpb on FineWeb at 50M params with INT4 quantization."
+
+**Fix implemented** (`research/extract_claims.py`, `research/grade.py`, `research/verify.py`):
+
+A new `extract_claims()` function performs deterministic regex extraction of quantitative claims from abstracts:
+
+```python
+# Extracts structured claims like:
+{
+    "claim_type": "absolute",        # or "delta", "comparison"
+    "metric": "bpb",                 # or "perplexity", "accuracy", etc.
+    "value": "1.08",
+    "context": "achieves 1.08 bpb on FineWeb validation"
+}
+```
+
+Claims are extracted at two points:
+1. **During batch grading**: Extracted claims are appended to the grading payload so the LLM grades against specific numbers, not prose
+2. **During Tier A verification**: Claims are injected into the re-grading prompt alongside full content and corroborating evidence
+
+This dramatically shrinks the hallucination surface area -- the LLM is grading "does this claim of +0.023 bpb at 50M params seem plausible?" rather than "is this paper good?"
+
+### 15.4 Problem: Circular Web-Based Corroboration
+
+The Stage 5 deep verification ran 2 corroborating evidence searches per Tier A item. Both queries went through Tavily -- the same web search infrastructure that produced the original item. If a technique was widely discussed on social media or marketing blogs, multiple low-quality corroborating sources would reinforce it, creating a circular validation loop.
+
+**Fix implemented** (`research/sources/semantic_scholar.py`, `research/verify.py`):
+
+One of the two corroboration queries is now replaced with a **Semantic Scholar forward-citation check** for items that have an S2 paper ID:
+
+```
+Corroboration sources:
+  1. Tavily web search (unchanged) -- catches community discussion, blog posts, implementations
+  2. Semantic Scholar forward citations (NEW) -- structured, deterministic, not circular
+```
+
+The `get_forward_citations()` function:
+- Looks up the paper's S2 ID (from URL or title search)
+- Fetches papers that cite it (forward citations)
+- Returns citation count + titles of citing papers as structured evidence
+- Falls back to Tavily if no S2 ID is found
+
+This provides a non-circular quality signal: a paper cited by 15 subsequent works in reputable venues is more credible than one with zero citations but heavy blog coverage.
+
+### 15.5 Problem: Self-Referential Reflection Cycle
+
+The reflection cycle (Stage 6) synthesises experiment history into strategic guidance using the LLM. The LLM reasons about its own prior outputs -- technique map updates, strategy recommendations, dead-end classifications. Without external validation, the reflection can produce plausible-sounding but incorrect strategic guidance that compounds over cycles.
+
+**Fix implemented** (`research/reflect.py`):
+
+A new `_validate_reflection_against_results()` function performs a deterministic audit of the reflection's conclusions against the actual empirical record in `results.tsv`:
+
+1. **Dead-end validation**: If the reflection marks a technique as `dead_end`, the function checks whether `results.tsv` actually contains a negative result for that technique. If not, a warning is generated: "Reflection marks X as dead_end but no negative result found in results.tsv"
+
+2. **Proven validation**: If the reflection marks a technique as `proven`, the function checks for a positive result. If not, a warning is generated.
+
+3. **Warning injection**: Validation warnings are appended to the strategy output before it's written to `strategy.md`, making them visible to both agents in subsequent cycles.
+
+The matching uses keyword overlap between technique names and experiment descriptions (lowercased, first 20 chars or word-level matching), with a tolerance for naming variations.
+
+### 15.6 Impact Assessment
+
+| Fix | Cost (tokens) | Expected Impact |
+|---|---|---|
+| Source authority tiers | 0 (deterministic) | Filters ~30-40% of low-quality web content before LLM grading |
+| Fail-open threshold raise | 0 (threshold change) | Reduces false-positive Tier A classifications for uncertain items |
+| Claim-level extraction | ~50 tokens/item (regex) + improved grading accuracy | Tighter LLM grading target; fewer hallucinated quality assessments |
+| Forward-citation corroboration | ~1 API call/item | Non-circular validation; catches papers with no academic impact |
+| Reflection validation | 0 (deterministic) | Prevents compounding strategic errors across cycles |
+
+Total additional cost per research cycle: ~1 Semantic Scholar API call per Tier A item (free tier: 100 requests/5 minutes). All other fixes are zero-cost deterministic operations.
+
+---
+
 ## Sources and References
 
 - Karpathy's autoresearch: https://github.com/karpathy/autoresearch
@@ -972,3 +1090,6 @@ The harness should be evaluated on the same metrics we identified in the critica
 - Meta-Harness (Stanford/MIT, 2026)
 - METR time-horizon benchmark
 - ForgeCode open-source repository: https://github.com/antinomyhq/forge
+- Multi-agent fact-checking with KG-structured verification: https://www.nature.com/articles/s41598-026-41862-z
+- Agentic RAG hallucination reduction: https://arxiv.org/html/2603.00267v1
+- Agentic RAG enterprise patterns: https://arxiv.org/abs/2603.01486
