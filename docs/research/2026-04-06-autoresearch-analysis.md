@@ -1428,6 +1428,186 @@ The evaluator is a separate agent (not a function call within the experiment age
 
 ---
 
+## 19. Context Management: Session Lifecycle, Within-Cycle Bloat, and Tool Result Filtering
+
+Context management in an agentic research loop splits into three distinct problems: session lifecycle (cross-cycle accumulation), within-cycle bloat (context growing during a single research pass), and tool result flooding (raw payloads from external sources entering the context window). The current architecture solves the first correctly, partially addresses the second, and needs a targeted approach for the third.
+
+### 19.1 Session-Level Context: Already Solved
+
+The single-turn `-p` mode (each agent exits after one cycle, orchestrator restarts) is the structurally correct answer to session-level context rot. This matches Anthropic's long-running harness prescription: "agents should be stateless between sessions; state lives in files, not context."
+
+The empirical cliff for context rot is documented at around **60% context fill** -- at which point models shift from a U-shaped attention pattern (favoring start and end of context) to favoring only recent tokens, with mid-context information effectively invisible. The single-turn design keeps each cycle well below this by construction.
+
+The `decision_state.md` handoff (~2K tokens) means each fresh context window starts with exactly what it needs, not the full 50-cycle history. This is correct and should not be changed.
+
+### 19.2 Within-Cycle Context Bloat: The Real Problem
+
+The within-cycle problem is concentrated in the research agent's Stage 4/5 pipeline:
+
+| Stage | Context Payload | Rot Risk | Why |
+|---|---|---|---|
+| **Stage 1 fetch** | Up to 10 raw documents from Tavily/ArXiv -- potentially 2-20K tokens total | **High** | Large raw payloads dumped before grading; noise from HTML, markdown, boilerplate |
+| **Stage 4 batch grading** | 10 items x (title + abstract) in one prompt | **Medium** | Grading prompt grows with injected context (SOTA bpb, last 10 failures, top 10 competitors) |
+| **Stage 5 deep verify** | 4,000 char full content + 2,000 char evidence x 5 items | **Medium** | Items at positions 2-4 of 5 are "in the middle" during single-pass verification |
+| **Stage 6 reflection** | Full experiment history summary | **Low** | Already capped, but injecting the full technique map risks burying the strategic output |
+
+The most exploitable attack surface is **Stage 1 -> Stage 4**: if a fetched ArXiv page dumps its full HTML or PDF text into context before grading, items graded later in the batch work against a noisier context than items graded first. This is a position-dependent quality degradation that the current architecture does not address.
+
+### 19.3 The TLDR Proxy: Right Idea, Wrong Granularity
+
+A generic summarization proxy (like the TLDR MCP proxy) that compresses all tool results before context injection solves a real problem but risks active regression in the places that matter most.
+
+**Where generic summarization helps:**
+- Stage 1 raw fetches from RSS/GitHub/web (unstructured, high-noise, low-information-density)
+- Tavily web search results where the snippet is sufficient and the full page is noise
+- Any `results.tsv` or JSONL dump fed as a tool result
+
+**Where generic summarization hurts:**
+- **Stage 5 deep verification** -- the 4,000-char full paper content is the *point*. The system is trying to verify whether a specific quantitative claim (`+0.8% bpb at 50M params`) actually appears in the paper. A summary will reliably drop the specific numbers in favour of the general finding, which is exactly what the LLM grader already has from the abstract. This is the one stage where unsummarized content is essential.
+- **Stage 4 batch grading** -- the `implementability` dimension (0-4) requires reading pseudocode or algorithm descriptions, not prose summaries. Summarizing before grading collapses the distinction between "they describe the method" and "there is actual runnable pseudocode."
+
+The core issue: generic summarization applies **uniform compression** to everything. But the research pipeline has **asymmetric information needs** -- Stage 1 should be aggressively compressed, Stage 5 should not be touched at all.
+
+### 19.4 The Better Pattern: Programmatic Field Extraction
+
+The correct approach is **programmatic tool calling** where tool results never enter the context window raw -- only processed, structured output does. The code execution layer acts as a filter, not a summarizer.
+
+For the research pipeline, this means:
+
+**Stage 1 fetch -- extract structured fields, discard raw payload:**
+
+```python
+# Raw Tavily/RSS payloads never enter context window
+async def fetch_and_filter(source):
+    raw = await fetch_source(source)
+    return {
+        "title": raw["title"],
+        "abstract": raw["abstract"][:500],
+        "url": raw["url"],
+        "relevance_score": raw["score"],
+        "authority_tier": classify_authority(raw["url"]),
+        "claims": extract_claims(raw["abstract"])  # Section 15.3
+    }
+```
+
+**Stage 5 deep verify -- full content stays, but structured extraction first:**
+
+```python
+# Extract specific claims, don't dump everything
+async def verify_with_extraction(item):
+    full_content = await tavily_extract(item["url"])
+    claims = extract_quantitative_claims(full_content)
+    return {
+        "item": item,
+        "claims": claims,
+        "evidence_snippet": full_content[:500],  # Only the relevant portion
+        "full_content_available": True  # Flag for re-fetch if needed
+    }
+```
+
+This is fundamentally different from TLDR because **the code decides what to preserve**, not a generic summarizer. The quantitative claims (`+0.8% bpb`) survive because the extraction logic targets them explicitly. The surrounding prose does not survive because the code doesn't include it.
+
+**Implementation note**: Anthropic's programmatic tool calling (`code_execution_20260120`) runs tool results through a code sandbox before context injection, but MCP tools cannot currently be called programmatically. Since the research agent runs via Claude Code with tool calls, the cleanest path is implementing the filtering logic directly in `fetch.py` and `grade.py` -- the same result without the API feature dependency. The `extract_claims()` function added in Section 15.3 is already the first step of this pattern.
+
+### 19.5 Context Ordering: Put Important Content Last
+
+Above 50% context fill, models shift from U-shaped attention (favoring start and end) to favoring only recent tokens. This has a direct implication for prompt construction:
+
+**Current ordering** (likely):
+1. Dynamic context (SOTA targets, last 10 failures, competitor scores) -- at the top
+2. Static context (infrastructure docs, proven techniques, dead ends)
+3. Item batch being graded -- at the bottom
+
+**Recommended ordering**:
+1. Static context (dead ends, proven list, infrastructure docs) -- **least important, goes first** where it's least attended to above 50% fill
+2. Dynamic context (SOTA targets, failures, competitors) -- middle
+3. The items being graded and the specific question -- **most important, goes last** where attention is highest
+
+This is a zero-cost prompt reordering with a measurable expected gain for the most token-heavy stage (Stage 4 batch grading).
+
+### 19.6 Selective TLDR: Where It Does Have a Role
+
+The TLDR proxy is well-suited as a **defensive layer for Stage 1 only** -- specifically for RSS feeds, GitHub issue threads, and general Tavily web results that return HTML/markdown noise before the actual content.
+
+The selective application:
+
+| Source Type | TLDR | Rationale |
+|---|---|---|
+| `web` (general Tavily results) | **Enabled** | High noise, low information density; summary preserves the relevant signal |
+| `rss` (RSS feeds) | **Enabled** | Feed entries often include full HTML; only title + summary needed |
+| `github_issue` (GitHub issue threads) | **Enabled** | Long threads with tangential discussion; summary captures the resolution |
+| `arxiv` (ArXiv papers) | **Disabled** | Structured abstracts are already concise; summarizing loses specific numbers |
+| `github_pr` (GitHub PRs) | **Disabled** | Code diffs and implementation details are the point; summarizing loses them |
+| `openreview` (OpenReview) | **Disabled** | Peer review comments contain specific critiques; summarizing loses nuance |
+| `semantic_scholar` (S2 API) | **Disabled** | Already returns structured JSON; no noise to filter |
+
+This preserves the precision of structured source fetches while protecting against the long-tail noise from general web results.
+
+### 19.7 The Complete Context Management Stack
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ SESSION LEVEL                                                    │
+│ Single-turn -p mode ✅ (already implemented)                     │
+│ → Prevents cross-session context accumulation                    │
+│ → Each cycle starts with fresh context window                    │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────────┐
+│ HANDOFF LEVEL                                                    │
+│ decision_state.md ~2K token compact summary ✅ (implemented)     │
+│ → Fresh context window has only what matters                     │
+│ → Structured for progressive thinking (orientation first)        │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────────┐
+│ WITHIN-CYCLE: STAGE 1 (FETCH)                                    │
+│ Field-extraction filter in fetch.py (NEW)                        │
+│ → Raw Tavily/RSS payloads never enter context                    │
+│ → Only structured fields: title, abstract[:500], url, score,     │
+│   authority_tier, extracted claims                                │
+│ → Selective TLDR for web/rss sources only                        │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────────┐
+│ WITHIN-CYCLE: STAGE 4 (GRADING)                                  │
+│ Prompt construction with context ordering (NEW)                  │
+│ → Static context (dead ends, proven) FIRST (least attended)      │
+│ → Dynamic context (SOTA, failures, competitors) MIDDLE           │
+│ → Items being graded + question LAST (most attended)             │
+│ → Injected context capped separately from item batch             │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────────┐
+│ WITHIN-CYCLE: STAGE 5 (VERIFICATION)                             │
+│ Structured claim extraction before LLM grading ✅ (Section 15.3) │
+│ → Full content stays (this is the one place NOT to compress)     │
+│ → Claims extracted deterministically, injected alongside content │
+│ → Evidence snippet capped at 500 chars per corroboration source  │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────────┐
+│ WITHIN-CYCLE: STAGE 6 (REFLECTION)                               │
+│ Technique map injection capped ✅ (already capped)               │
+│ → Reflection validated against results.tsv ✅ (Section 15.5)     │
+│ → Strategy output capped at 5 entries                            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 19.8 Implementation Priority for Context Management
+
+| # | Change | Complexity | Expected Impact |
+|---|---|---|---|
+| **1** | Prompt reordering in `grade.py` (static first, items last) | Zero (prompt edit) | Measurable grading accuracy improvement above 50% fill |
+| **2** | Field-extraction filter in `fetch.py` Stage 1 | Low (already partially done via `RawItem` dataclass) | Prevents 2-20K tokens of raw noise entering context |
+| **3** | Selective TLDR configuration (enabled for web/rss, disabled for arxiv/github_pr) | Low (configuration) | Protects against long-tail web noise without degrading structured sources |
+| **4** | Separate caps for injected context vs item batch in grading prompt | Low (prompt restructure) | Prevents compound bloat when both dynamic context and item batch are large |
+| **5** | Evidence snippet capping in `verify.py` Stage 5 | Low (already partially done) | Prevents corroboration evidence from overwhelming the verification prompt |
+
+All five changes are low-complexity. Items 1-2 are zero-cost prompt/code changes that should be implemented immediately. Items 3-5 are configuration and capping changes that can be done alongside the next research pipeline run.
+
+---
+
 ## Sources and References
 
 - Karpathy's autoresearch: https://github.com/karpathy/autoresearch
@@ -1446,3 +1626,5 @@ The evaluator is a separate agent (not a function call within the experiment age
 - Agentic RAG hallucination reduction: https://arxiv.org/html/2603.00267v1
 - Agentic RAG enterprise patterns: https://arxiv.org/abs/2603.01486
 - Anthropic multi-agent research system: https://www.anthropic.com/engineering/multi-agent-research-system
+- Context rot and attention patterns in long-context models (Veseli et al., 2025)
+- Anthropic programmatic tool calling: https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/programmatic-tool-calling
