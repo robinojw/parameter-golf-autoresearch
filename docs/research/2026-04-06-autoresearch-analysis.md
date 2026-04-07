@@ -20,6 +20,7 @@
 11. [The Case for a Specialized AI Research Harness](#11-the-case-for-a-specialized-ai-research-harness)
 12. [Recommended Architecture for a Research Harness Plugin](#12-recommended-architecture)
 13. [Open Questions and Future Directions](#13-open-questions-and-future-directions)
+14. [Detailed Harness Design: An AI Research Harness Based on SOTA Evidence](#14-detailed-harness-design)
 
 ---
 
@@ -564,6 +565,399 @@ Before building the generalized plugin, validate the architecture by running the
 
 ---
 
+## 14. Detailed Harness Design: An AI Research Harness Based on SOTA Evidence
+
+This section presents a concrete, implementation-level design for an AI research harness. Unlike the abstract plugin architecture in Section 12, this design is grounded in specific patterns proven to work in ForgeCode (25% -> 81.8% on TermBench 2.0), Anthropic's three-agent architecture ($9 solo -> $200 harness with qualitatively different output), and the lessons learned from running this autoresearch system.
+
+The design question is: **what would a ForgeCode-class harness look like if it were purpose-built for AI/ML research instead of software engineering?**
+
+### 14.1 Why Not Just Use a Coding Harness?
+
+The Anthropic and ForgeCode evidence establishes that harness design accounts for 10-56 percentage points of performance on the same model. But both systems are optimized for software engineering, where the feedback signal is binary (tests pass/fail) and verification is near-free (run the test suite).
+
+AI research has fundamentally different properties:
+
+| Property | Coding Harness (ForgeCode/Claude Code) | AI Research Harness |
+|---|---|---|
+| **Feedback signal** | Binary: tests pass or fail | Continuous: val_bpb improved by 0.003 -- is that signal or noise? |
+| **Verification cost** | Near-zero (run tests) | $3-10 per H100 experiment |
+| **Session scope** | One task, one session | One hypothesis, one experiment, one cycle -- but knowledge accumulates across hundreds of cycles |
+| **Context between sessions** | Git history + progress file | Technique map + hypothesis log + experiment history + research findings + budget state |
+| **Failure mode** | Code doesn't compile / tests fail | Experiment runs but produces misleading signal (P2 loss: positive locally, regression on H100) |
+| **Planning horizon** | Feature list (known upfront) | Search space (discovered incrementally, with dead ends) |
+| **Cost of wrong decision** | Wasted tokens (~$0.10) | Wasted GPU hours (~$3-10) |
+
+A coding harness treats each session as independent. A research harness must maintain **state across hundreds of sessions** -- what's been tried, what worked, what failed, what the current frontier is, and what the most promising next direction is. This is a fundamentally different problem.
+
+### 14.2 Lessons from ForgeCode's Architecture
+
+ForgeCode's Rust-based architecture (23 crates, ~50K lines) reveals several patterns that transfer directly to a research harness:
+
+#### Pattern 1: The Orchestrator Loop
+
+ForgeCode's core is a `while !should_yield` loop in `orch.rs` that:
+1. Saves context to the conversation store
+2. Fires lifecycle events (where doom loop detection runs)
+3. Calls the LLM with retry logic
+4. Fires response events (where compaction runs)
+5. Checks completion conditions
+6. Executes tool calls sequentially
+7. Tracks errors and enforces `max_requests_per_turn`
+
+**Research harness equivalent:** Our `orchestrate.py` already implements this pattern, but with a critical difference: ForgeCode's loop runs *within* a single agent session (the agent makes multiple tool calls per session), while ours runs *across* sessions (each agent session is a single cycle that exits). The ForgeCode pattern is more efficient -- the agent maintains context within a session and only resets between sessions.
+
+**Design decision:** The research harness should adopt ForgeCode's intra-session loop for the experiment agent. Instead of spawning a new process per cycle, keep the agent alive for multiple experiment cycles within a single session, using compaction to manage context growth. Reset the session only when the agent's context becomes too stale or when a major strategy shift is needed.
+
+#### Pattern 2: The Hook System
+
+ForgeCode uses a composable event handling framework with 6 lifecycle events: Start, End, Request, Response, ToolcallStart, ToolcallEnd. Four concrete handlers are implemented:
+
+| Handler | Purpose |
+|---|---|
+| `TracingHandler` | Structured logging |
+| `TitleGenerationHandler` | Conversation titles |
+| `CompactionHandler` | Context window management |
+| `DoomLoopDetector` | Detects repetitive tool call patterns |
+
+**Research harness equivalent:** The research harness needs domain-specific hooks:
+
+| Hook | Fires On | Purpose |
+|---|---|---|
+| `HypothesisEnforcer` | Before tool call to `promote` or `run_experiment` | Blocks execution if no hypothesis has been recorded for this cycle |
+| `BudgetGuard` | Before any compute-spending tool call | Checks remaining budget, enforces rate limiting, blocks if below reserve |
+| `ScaleTransferWarner` | Before promotion to expensive tier | Checks if the technique category has known scale-transfer risks |
+| `ExperimentTracer` | After experiment completion | Records outcome, resolves hypothesis, updates technique map |
+| `CompactionHandler` | After LLM response | Same as ForgeCode -- manages context window pressure |
+| `DoomLoopDetector` | Before LLM request | Detects if the agent is repeating failed experiments |
+
+The key insight from ForgeCode is that these hooks are **composable** -- you can chain them with `.and()` and merge them with `.zip()`. This means the research harness can start with a minimal set and add domain-specific hooks incrementally.
+
+#### Pattern 3: Agent-as-Tool Parallelization
+
+ForgeCode's `AgentExecutor` enables a parent agent to delegate multiple tasks to a child agent, with all tasks running in parallel via `join_all()`. The parent specifies tasks as a list of strings, and each task creates a new conversation.
+
+**Research harness equivalent:** This maps directly to the research agent's fetch-and-grade pipeline. Instead of the research agent sequentially fetching from 10 sources, grading items, and verifying findings, a parent "research coordinator" could delegate:
+- Task 1: "Fetch and grade ArXiv papers on optimizer modifications for small LMs"
+- Task 2: "Fetch and grade GitHub PRs in the parameter-golf repo"
+- Task 3: "Check competitor leaderboard for SOTA changes"
+
+All three run in parallel, and the coordinator merges results. This would cut research cycle time by ~3x.
+
+#### Pattern 4: Tool Naming and Schema Design
+
+ForgeCode's most surprising finding: **renaming tool arguments to match training data priors** (e.g., `old_string`/`new_string` for file edits) measurably reduced tool-call error rates. Additionally, putting `required` before `properties` in JSON schemas reduced GPT 5.4 malformed calls.
+
+**Research harness equivalent:** The research harness's tools should be named to match what the model has seen in training:
+- `run_experiment` not `execute_training_run`
+- `check_results` not `parse_training_log`
+- `record_hypothesis` not `log_prediction`
+- `promote_to_gpu` not `request_h100_allocation`
+
+The tool schemas should be flat (not nested), with `required` fields listed first.
+
+#### Pattern 5: Progressive Thinking
+
+ForgeCode applies a tiered reasoning budget:
+1. First 10 messages: **very high thinking** (planning phase)
+2. Messages 11+: **low thinking** (execution phase)
+3. Verification skill invoked: **back to high thinking** (decision point)
+
+**Research harness equivalent:** The experiment agent's cycle has three distinct phases that map to different thinking budgets:
+
+| Phase | Messages | Thinking Budget | Why |
+|---|---|---|---|
+| **Orientation** | 1-3 | High | Read decision state, identify what to try, form hypothesis |
+| **Implementation** | 4-8 | Low | Edit training script, run experiment -- mechanical execution |
+| **Analysis** | 9-12 | High | Parse results, resolve hypothesis, decide whether to promote |
+
+This is not currently implemented -- our agents run with uniform thinking budget throughout. Adding progressive thinking would reduce token cost per cycle by ~30-40% while maintaining quality on the decisions that matter.
+
+#### Pattern 6: Enforced Verification (The Evaluator)
+
+ForgeCode's biggest single improvement was **enforced verification** -- the model must call a verification skill before completing, switching from builder mode to reviewer mode. Without enforcement, the model "would implement a solution, sound confident, and stop."
+
+Anthropic's three-agent architecture takes this further: the evaluator is a separate agent that uses Playwright to interact with the running application, grading against specific criteria with hard thresholds.
+
+**Research harness equivalent:** After every experiment, the agent must:
+1. Parse the training log and extract the actual val_bpb
+2. Compare against the hypothesis prediction
+3. Check for anomalies (training instability, NaN losses, artifact size violations)
+4. Resolve the hypothesis with a learned rule
+5. Decide: keep, discard, or investigate further
+
+Currently, steps 1-2 happen but steps 3-5 are advisory. The harness should **enforce** all five steps before the agent can exit the cycle. If the agent tries to exit without resolving its hypothesis, the harness should inject a reminder (like ForgeCode's `DoomLoopDetector`).
+
+### 14.3 The Three-Agent Architecture for Research
+
+Drawing from Anthropic's planner-generator-evaluator pattern and adapting it for research:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     RESEARCH HARNESS                            │
+│                                                                 │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐      │
+│  │   PLANNER    │    │  EXPERIMENT  │    │  EVALUATOR   │      │
+│  │   (Research  │───>│    AGENT     │───>│   (Critic +  │      │
+│  │    Agent)    │    │  (Generator) │    │  Verifier)   │      │
+│  └──────┬───────┘    └──────┬───────┘    └──────┬───────┘      │
+│         │                   │                   │               │
+│         │    ┌──────────────┴──────────────┐    │               │
+│         │    │      ORCHESTRATOR           │    │               │
+│         │    │  (Lifecycle hooks, budget,  │    │               │
+│         │    │   compute routing, state)   │    │               │
+│         │    └──────────────┬──────────────┘    │               │
+│         │                   │                   │               │
+│         ▼                   ▼                   ▼               │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              SHARED STATE (File-Based)                   │   │
+│  │  decision_state.md | hypotheses.jsonl | results.tsv      │   │
+│  │  technique_map.json | research_results.jsonl | budget    │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Planner (Research Agent):** Discovers techniques, grades them, maintains the technique map, and produces a prioritized list of what to try next. Equivalent to Anthropic's planner that expands a one-line prompt into a full spec. Runs on-demand or on a schedule.
+
+**Generator (Experiment Agent):** Picks the highest-priority technique from the planner's output, forms a hypothesis, implements it, runs the experiment, and produces results. Equivalent to Anthropic's generator that implements one feature per sprint.
+
+**Evaluator (Critic + Verifier):** Reviews the experiment results independently of the generator. Checks: did the metric actually improve? Is the improvement statistically significant? Does the technique transfer across tiers? Are there anomalies in the training curve? Equivalent to Anthropic's evaluator that uses Playwright to test the running application.
+
+The critical difference from Anthropic's pattern: **the evaluator runs after every experiment, not just at the end of a sprint.** In research, every experiment is a decision point -- the evaluator's judgment determines whether to keep the change, discard it, or investigate further.
+
+### 14.4 Sprint Contracts for Research
+
+Anthropic's sprint contract pattern -- where the generator and evaluator agree on "what done looks like" before any code is written -- maps naturally to hypothesis-driven research:
+
+**Before each experiment cycle:**
+1. The experiment agent reads the decision state and selects a technique
+2. It records a structured hypothesis: `{technique, prediction, basis, scale_risk}`
+3. The evaluator reviews the hypothesis and the proposed code change
+4. Both agree on success criteria: "If val_bpb improves by > 0.005 on local, promote to H100"
+
+**After the experiment:**
+1. The experiment agent runs the experiment and records raw results
+2. The evaluator independently parses the training log
+3. The evaluator grades against the agreed criteria
+4. If criteria are met: promote. If not: discard with a learned rule.
+
+This is the **sprint contract** adapted for research. The key benefit: the evaluator catches cases where the generator would self-evaluate positively ("the loss went down!") when the actual result is ambiguous or misleading.
+
+### 14.5 Context Engineering for Research Sessions
+
+ForgeCode's compaction strategy (eviction window + retention window, triggered by token/message thresholds) needs adaptation for research:
+
+#### The Decision State as Structured Handoff
+
+Our `decision_state.md` already implements Anthropic's "structured handoff artifact" pattern. But it can be improved based on ForgeCode's evidence:
+
+**Current state (2-4K tokens):**
+```
+# Decision State
+## Current Best: 1.1563 bpb
+## Budget: $X spent, $Y remaining
+## Last 5 Experiments: [table]
+## Unacked Research: [list]
+## Dead Ends: [list]
+## Learned Rules: [list]
+```
+
+**Improved state (structured for progressive thinking):**
+```
+# Decision State (Orientation Phase — read this first, think deeply)
+
+## CRITICAL CONTEXT
+- Best H100 val_bpb: 1.1563
+- Gap to SOTA: 0.047 bpb
+- Budget remaining: $X ($Y reserve)
+- Experiments this session: 0
+
+## WHAT TO TRY NEXT (ranked by expected impact)
+1. TTT 10-epoch cosine (expected -0.030 bpb, basis: TTT 3-epoch gave -0.020)
+2. Full Hessian GPTQ (expected -0.010 bpb, basis: 4/7 top entries use it)
+3. LoRA TTT rank-8 (expected -0.015 bpb, basis: 24x more effective than SGD TTT)
+
+## WHAT NOT TO TRY (dead ends with reasons)
+- P2 focal loss: REGRESSION +0.067 on H100 (loss functions don't transfer from 500 to 7000 steps)
+- Turbo-Muon: worse at 7000+ steps (optimizer dynamics are scale-dependent)
+- NorMuon VR: marginal on H100 (-0.0002, not worth the complexity)
+
+## LEARNED RULES (from resolved hypotheses)
+- "Loss function modifications should NOT be validated at 500 local steps"
+- "Optimizer schedule changes need 2000+ step validation to be meaningful"
+- "Compression improvements (brotli, zstd) always transfer between tiers"
+
+# Implementation Phase — low thinking from here
+## Last 5 Experiments: [compact table]
+## Unacked Research: [top 3 only]
+```
+
+The key change: the decision state is **structured for progressive thinking**. The orientation section (what to try, what not to try, learned rules) gets high thinking budget. The implementation details (experiment history, research findings) get low thinking budget.
+
+#### Compaction Strategy for Research
+
+ForgeCode compacts by replacing a range of messages with a summary, preserving the last reasoning block for chain continuity. For research, compaction should additionally preserve:
+
+1. **The current hypothesis** -- never compact away the active hypothesis
+2. **The last experiment result** -- the agent needs to know what just happened
+3. **Learned rules** -- these are the accumulated wisdom; losing them means repeating mistakes
+4. **Budget state** -- the agent must always know how much it can spend
+
+Everything else (research findings, competitor scores, technique map details) can be compacted to summaries.
+
+### 14.6 The Tool Catalog for Research
+
+Based on ForgeCode's evidence that tool naming and schema design are reliability variables, here is the research harness tool catalog:
+
+```
+Research Harness Tool Catalog
+├── Experiment Tools
+│   ├── record_hypothesis(technique, prediction, basis, scale_risk)
+│   ├── run_experiment(script, tier, max_steps, description)
+│   ├── resolve_hypothesis(technique, outcome, learned_rule)
+│   ├── promote_to_gpu(script_path, description, expected_improvement)
+│   └── check_results(run_id) -> {val_bpb, steps, artifact_size, anomalies}
+│
+├── Research Tools
+│   ├── search_papers(query, sources, max_results)
+│   ├── grade_finding(title, abstract, url) -> {score, tier, scale_risk}
+│   ├── ack_finding(finding_id, action: adopted|rejected|deferred)
+│   └── request_research(topic, urgency)
+│
+├── Knowledge Tools
+│   ├── query_technique_map(technique) -> {status, evidence, parent}
+│   ├── update_technique_map(technique, status, evidence)
+│   ├── query_experiments(filter) -> [{description, bpb, status, cost}]
+│   └── get_learned_rules(topic?) -> [rules]
+│
+├── Compute Tools
+│   ├── check_budget() -> {spent, remaining, reserve, rate_limit_status}
+│   ├── estimate_cost(tier, steps) -> {estimated_cost, within_budget}
+│   └── abort_run(run_id, reason)
+│
+└── Standard Tools (inherited from coding harness)
+    ├── read, write, patch (file operations)
+    ├── shell (command execution)
+    ├── search (codebase search)
+    └── todo_write (planning state)
+```
+
+**Schema design principles (from ForgeCode evidence):**
+- All schemas are flat (no nesting)
+- `required` fields listed before `properties`
+- Argument names match training data priors (`technique` not `method_name`, `prediction` not `expected_outcome`)
+- Tool descriptions include explicit examples of correct usage
+- Truncation warnings are inline in tool output, not just in metadata
+
+### 14.7 The Evaluator Agent Design
+
+The evaluator is the most novel component -- it doesn't exist in coding harnesses because tests serve the same function. In research, there is no equivalent of "run the test suite." The evaluator must make judgment calls.
+
+**Evaluator grading criteria (adapted from Anthropic's frontend design criteria):**
+
+| Criterion | Weight | What It Measures | Hard Threshold |
+|---|---|---|---|
+| **Metric improvement** | 40% | Did val_bpb actually improve? By how much? Is it statistically significant? | Must improve by > 0.001 to keep |
+| **Hypothesis validity** | 20% | Did the outcome match the prediction? If not, why? | Must resolve hypothesis with a learned rule |
+| **Constraint compliance** | 20% | Artifact size < 16MB? Training time < 600s? No data leakage? | Hard fail on any violation |
+| **Transfer confidence** | 10% | How likely is this to hold at full scale? (Based on technique category and scale-transfer risk) | Warn if high-risk technique |
+| **Implementation quality** | 10% | Is the code change clean? One variable changed? Reversible? | Warn if diff > 100 lines or multiple changes stacked |
+
+The evaluator runs after every experiment and produces a structured verdict:
+
+```json
+{
+  "verdict": "keep|discard|investigate",
+  "metric_delta": -0.003,
+  "hypothesis_match": true,
+  "constraint_violations": [],
+  "transfer_confidence": "high",
+  "implementation_quality": "clean",
+  "critique": "Improvement is real but small. The technique adds 15 lines of complexity for 0.003 bpb. Consider whether the complexity is worth it given the remaining gap to SOTA.",
+  "recommendation": "Keep, but prioritize higher-impact techniques next cycle."
+}
+```
+
+**Calibration:** Like Anthropic's evaluator, the research evaluator needs calibration against human judgment. The initial calibration set is the 18 experiments already run -- we know which ones were keeps, which were discards, and which were misleading. The evaluator should produce the same verdicts on this historical data before being trusted on new experiments.
+
+### 14.8 Doom Loop Detection for Research
+
+ForgeCode's `DoomLoopDetector` detects repetitive tool call patterns. The research equivalent detects:
+
+1. **Technique repetition:** The agent is trying variations of a dead-end technique (e.g., 11 NorMuon entries)
+2. **Scale-transfer blindness:** The agent keeps promoting techniques that fail at H100 scale
+3. **Budget drain:** The agent is spending faster than the improvement rate justifies
+4. **Hypothesis-free experimentation:** The agent is running experiments without recording hypotheses
+
+Detection rules:
+
+```python
+DOOM_LOOP_RULES = {
+    "technique_repetition": {
+        "trigger": "3+ experiments on the same technique with no improvement",
+        "action": "Inject: 'You have tried {technique} 3 times with no improvement. Mark it as dead_end and move on.'"
+    },
+    "scale_transfer_blindness": {
+        "trigger": "2+ H100 regressions from techniques that passed local validation",
+        "action": "Inject: 'Your last 2 H100 promotions regressed. Review scale-transfer risk before promoting again.'"
+    },
+    "budget_drain": {
+        "trigger": "3+ consecutive H100 runs with no improvement",
+        "action": "Inject: 'You have spent ${cost} on 3 consecutive non-improving runs. Switch to local-only experimentation until you find a strong signal.'"
+    },
+    "hypothesis_free": {
+        "trigger": "Experiment started without record_hypothesis call",
+        "action": "Block: 'You must record a hypothesis before running an experiment.'"
+    }
+}
+```
+
+### 14.9 What This Design Changes vs. Our Current System
+
+| Component | Current System | Research Harness Design | Why Change |
+|---|---|---|---|
+| **Agent lifecycle** | Single-turn `-p` mode, exit after each cycle | Multi-turn session with compaction, reset on strategy shift | Reduces process spawn overhead, maintains intra-session context |
+| **Evaluator** | Critic gate is a function call in the orchestrator | Separate evaluator agent with structured grading criteria | Separating generator from evaluator is "the single strongest lever" (Anthropic) |
+| **Planning enforcement** | Advisory ("one variable at a time") | Mandatory hypothesis recording via hook, blocks execution without it | "Optional tools get deprioritized under pressure" (ForgeCode) |
+| **Thinking budget** | Uniform throughout cycle | Progressive: high for orientation/analysis, low for implementation | Reduces token cost ~30-40% while maintaining decision quality |
+| **Tool schemas** | Implicit (agent uses shell commands) | Explicit tool catalog with flat schemas, training-aligned naming | Tool naming is "a reliability variable, not an aesthetic choice" (ForgeCode) |
+| **Context handoff** | `decision_state.md` (flat structure) | Structured for progressive thinking (orientation section + implementation section) | Matches ForgeCode's evidence that early messages need high thinking |
+| **Doom loop detection** | None | Rule-based detection with injected reminders | Prevents the 11-NorMuon-entry problem and budget drain |
+| **Research parallelization** | Sequential fetch-grade-verify | Agent-as-tool parallel delegation for independent research tasks | ForgeCode's `join_all()` pattern for parallelizable subtasks |
+| **Verification** | Post-flight checks in orchestrator | Enforced verification skill that switches agent to reviewer mode | "Enforced verification was the biggest single improvement" (ForgeCode) |
+| **Sprint contracts** | None | Hypothesis + success criteria agreed before experiment | Anthropic's sprint contract pattern adapted for research |
+
+### 14.10 Implementation Priority
+
+Based on the evidence from ForgeCode (each phase was a targeted intervention against a specific failure class), the implementation should follow the same pattern -- one failure mode at a time, measured before and after:
+
+| Priority | Intervention | Expected Impact | Evidence |
+|---|---|---|---|
+| **1** | Enforced hypothesis recording (hook that blocks experiment without hypothesis) | Prevents hypothesis-free experimentation; enables learned rules | ForgeCode: `todo_write` enforcement took them from 38% -> 66% |
+| **2** | Enforced verification (evaluator grades every experiment result) | Catches misleading signals before they waste H100 budget | ForgeCode: "biggest single improvement"; Anthropic: "strong lever" |
+| **3** | Progressive thinking (high for orientation/analysis, low for implementation) | ~30-40% token cost reduction per cycle | ForgeCode: part of the 66% -> 78.4% phase |
+| **4** | Doom loop detection (technique repetition, scale-transfer blindness) | Prevents the NorMuon-11-entries problem and budget drain | ForgeCode: `DoomLoopDetector` is a core hook |
+| **5** | Research parallelization (agent-as-tool for independent fetch tasks) | ~3x faster research cycles | ForgeCode: subagent parallelization was part of the speed architecture |
+| **6** | Multi-turn sessions with compaction (replace single-turn `-p` mode) | Maintains intra-session context, reduces process spawn overhead | Anthropic: Opus 4.6 can drop sprint construct; compaction handles context |
+| **7** | Explicit tool catalog with flat schemas | Reduces tool-call errors | ForgeCode: "tool naming is a reliability variable" |
+
+**The key principle from ForgeCode:** "Each phase was a targeted intervention against a specific failure class, not a general quality improvement. That specificity is what makes the result reproducible."
+
+### 14.11 Measuring Success
+
+The harness should be evaluated on the same metrics we identified in the critical analysis (Section 7):
+
+| Metric | Current Baseline | Target | How to Measure |
+|---|---|---|---|
+| Wasted H100 runs (regressions) | 44% (4/9) | < 20% | Count H100 runs where val_bpb worsened |
+| Misleading local signals | 26% of spend ($20.88) | < 10% of spend | Track techniques that pass local but fail H100 |
+| Research duplication | 60% redundancy (149 entries, ~60 unique) | < 20% redundancy | Jaccard similarity check on new entries |
+| Hypothesis coverage | 0% (no hypothesis tracking existed) | 100% | Every experiment must have a recorded hypothesis |
+| Learned rules accumulated | 0 | 5+ per 20 experiments | Count resolved hypotheses with learned rules |
+| Experiments per dollar | ~0.23 ($79.83 / 18 experiments) | > 0.5 | Total experiments / total spend |
+| Time to new best | ~6 experiments between improvements | < 4 experiments | Count experiments between each new best val_bpb |
+
+---
+
 ## Sources and References
 
 - Karpathy's autoresearch: https://github.com/karpathy/autoresearch
@@ -577,3 +971,4 @@ Before building the generalized plugin, validate the architecture by running the
 - Google multi-agent scaling research (2025)
 - Meta-Harness (Stanford/MIT, 2026)
 - METR time-horizon benchmark
+- ForgeCode open-source repository: https://github.com/antinomyhq/forge
